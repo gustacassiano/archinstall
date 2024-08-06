@@ -114,15 +114,15 @@ if [[ $DESKTOP == '1']]
 then
     pacman -S gnome gdm --noconfirm --needed
 
-if [[ $DESKTOP == '2']]
+elif [[ $DESKTOP == '2']]
 then
     pacman -S plasma sddm kde-applications --noconfirm --needed
 
-if [[ $DESKTOP == '3']]
+elif [[ $DESKTOP == '3']]
 then
     pacman -S xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm -needed
 
-if [[ $DESKTOP == '4']]
+elif [[ $DESKTOP == '4']]
 then
     echo "Faça a instalação você mesmo"
 fi
@@ -133,4 +133,4 @@ echo "-------------------------------------------------------"
 
 REALEND
 
-arch-chroot /mnt sh next.sh
+arch-chroot /mnt sh next.sh && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si && cd

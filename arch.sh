@@ -40,7 +40,6 @@ done
 # Criando sistema de arquivos
 
 echo -e "\nCriando Sistema de Arquivos...\n"
-
 existing_fs=$(blkid -s TYPE -o value "$EFI")
 if [[ "$existing_fs" != "vfat" ]]; then
     mkfs.vfat -F32 "$EFI"
@@ -62,20 +61,8 @@ echo "-------INSTALANDO ARCH LINUX NO DRIVE SELECIONADO--------"
 echo "---------------------------------------------------------"
 
 
-pacstrap /mnt base base-devel --noconfirm --needed
+pacstrap /mnt base base-devel linux linux-firmware networkmanager network-manager-applet wireless_tools vim nano intel-ucode git --noconfirm --needed
 
-# KERNEL 
-
-
-pacstrap /mnt linux linux-firmware --noconfirm --needed
-
-
-echo "-------------------------------------"
-echo "--------AJUSTANDO DEPENDENCIAS-------"	
-echo "-------------------------------------"
-
-
-pacstrap /mnt networkmanager network-manager-applet wireless_tools vim nano intel-ucode git --noconfirm --needed
 
 #FSTAB
 
@@ -83,14 +70,17 @@ genfstab -U /mnt >> /mnt/etc/fstab
 
 
 cat <<REALEND > /mnt/next.sh
-
 useradd -m $USER
-usermod -aG wheel,storage,power,audio $USER
+usermod -c "${NAME}" $USER
+usermod -aG wheel,storage,power,audio,video $USER
 echo $USER:$PASSWORD | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+
+
 echo "------------------------------------------------"
 echo "Definindo idioma para PT-BR e definindo 'locale'"
 echo "------------------------------------------------"
+
 sed -i 's/^#pt_BR.UTF-8 UTF-8/pt_BR.UTF-8 UTF=8' /etc/locale.gen
 locale-gen
 echo "LANG=pt_BR.UTF-8" >> /etc/locale.conf
@@ -104,29 +94,6 @@ cat <<EOF > /etc/hosts
 ::1			localhost
 127.0.1.1	archlinux.localdomain	archlinux
 EOF
-
-
-
-echo "-------------------------------------"
-echo "-------INSTALANDO BOOTLOADER---------"	
-echo "-------------------------------------"
-
-
-
-if [[ $BOOT == 1 ]]; then
-    bootctl install --path=/boot
-    echo "default arch.conf" >> /boot/loader/loader.conf
-    cat <<EOF > /boot/loader/entries/arch.conf
-title Arch Linux
-linux /vmlinuz-linux
-initrd /initramfs-linux.img
-options root=UUID=$ROOT_UUID rw quiet
-EOF
-else
-    pacman -S grub efibootmgr --noconfirm --needed
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="Linux Boot Manager"
-    grub-mkconfig -o /boot/grub/grub.cfg
-fi
 
 
 
@@ -157,6 +124,28 @@ then
 else
     echo "Faça a instalação você mesmo"
 fi
+
+
+
+echo "-------------------------------------"
+echo "-------INSTALANDO BOOTLOADER---------"	
+echo "-------------------------------------"
+
+if [[ $BOOT == 1 ]]; then
+    bootctl install --path=/boot
+    echo "default arch.conf" >> /boot/loader/loader.conf
+    cat <<EOF > /boot/loader/entries/arch.conf
+title Arch Linux
+linux /vmlinuz-linux
+initrd /initramfs-linux.img
+options root=UUID=$ROOT_UUID rw quiet
+EOF
+else
+    pacman -S grub efibootmgr --noconfirm --needed
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="Linux Boot Manager"
+    grub-mkconfig -o /boot/grub/grub.cfg
+fi
+
 
 echo "-------------------------------------------------------"
 echo "---------INSTALAÇÃO COMPLETA - FAÇA UM REBOOT----------"

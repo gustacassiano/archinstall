@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
 
 echo "Defina a partição de EFI: (exemplo /dev/sda1 ou /dev/nvme0n1p1)"
-
 read EFI
 
 echo "Defina partição de SWAP (exemplo /dev/sda2 ...)"
-
 read SWAP
 
 echo "Defina a partição de Root(/): (exemplo /dev/sda3)"
-
 read ROOT
 
 echo "Defina um username"
-
 read USER
 
 echo "Defina uma senha"
-
 read PASSWORD
 
 echo "Escolha um desktop Environment"
@@ -28,20 +23,39 @@ echo "4. NoDesktop"
 
 read DESKTOP
 
+while true; do
+    echo "Escolha um Bootloader"
+    echo "1. Systemdboot"
+    echo "2. GRUB"
+    read BOOT
+
+    # Check if input is either 1 or 2
+    if [[ $BOOT == 1 || $BOOT == 2 ]]; then
+        break
+    else
+        echo "Invalid input. Please enter either 1 or 2."
+    fi
+done
+
 # Criando sistema de arquivos
 
 echo -e "\nCriando Sistema de Arquivos...\n"
 
-mkfs.vfat -F32 -n "EFISYSTEM" "${EFI}"
-mkswap "${SWAP}"
-swapon "${SWAP}"
-mkfs.ext4 -L "ROOT" "${ROOT}"
+existing_fs=$(blkid -s TYPE -o value "$EFI")
+if [[ "$existing_fs" != "vfat" ]]; then
+    mkfs.vfat -F32 "$EFI"
+fi
 
-# Montando alvos
+mkfs.ext4 "${ROOT}"
 
-mount -t ext4 "${ROOT}" /mnt
-mkdir /mnt/boot
-mount -t vfat "${EFI}" /mnt/boot/
+# mount target
+mount "${ROOT}" /mnt
+ROOT_UUID=$(blkid -s UUID -o value "$ROOT")
+if [[ $BOOT == 1 ]]; then
+    mount --mkdir "$EFI" /mnt/boot
+else
+    mount --mkdir "$EFI" /mnt/boot/efi
+fi
 
 echo "---------------------------------------------------------"
 echo "-------INSTALANDO ARCH LINUX NO DRIVE SELECIONADO--------"	
@@ -68,18 +82,6 @@ pacstrap /mnt networkmanager network-manager-applet wireless_tools vim nano inte
 genfstab -U /mnt >> /mnt/etc/fstab
 
 
-echo "-------------------------------------"
-echo "-------INSTALANDO BOOTLOADER---------"	
-echo "-------------------------------------"
-
-bootctl install --path /mnt/boot
-echo "default arch.conf" >> /mnt/boot/loader/loader.conf
-cat <<EOF > /mnt/boot/loader/entries/arch.conf
-title Arch Linux /vmlinuz-linux
-initrd /initramfs-linux.img
-options root=${ROOT} rw
-EOF
-
 cat <<REALEND > /mnt/next.sh
 
 useradd -m $USER
@@ -98,8 +100,35 @@ hwclock --systohc
 
 echo "arch" > /etc/hostname
 cat <<EOF > /etc/hosts
-127.0.0.1   localhost
+127.0.0.1	localhost
+::1			localhost
+127.0.1.1	archlinux.localdomain	archlinux
 EOF
+
+
+
+echo "-------------------------------------"
+echo "-------INSTALANDO BOOTLOADER---------"	
+echo "-------------------------------------"
+
+
+
+if [[ $BOOT == 1 ]]; then
+    bootctl install --path=/boot
+    echo "default arch.conf" >> /boot/loader/loader.conf
+    cat <<EOF > /boot/loader/entries/arch.conf
+title Arch Linux
+linux /vmlinuz-linux
+initrd /initramfs-linux.img
+options root=UUID=$ROOT_UUID rw quiet
+EOF
+else
+    pacman -S grub efibootmgr --noconfirm --needed
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="Linux Boot Manager"
+    grub-mkconfig -o /boot/grub/grub.cfg
+fi
+
+
 
 echo "-----------------------------------------------------"
 echo "-------------DISPLAY E DRIVERS DE AUDIO--------------"
@@ -135,4 +164,4 @@ echo "-------------------------------------------------------"
 
 REALEND
 
-arch-chroot /mnt sh next.sh && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si && cd
+arch-chroot /mnt sh next.sh

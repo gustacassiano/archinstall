@@ -23,15 +23,15 @@ echo "
 echo "Bem-vindo ao instalador do Arch Linux por Gustavo Cameiras"
 sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
 pacman --noconfirm -Sy archlinux-keyring
-loadkeys abnt-2
+loadkeys br-abnt2
 timedatectl set-ntp true
 lsblk
 
 echo "Informe o Drive:"
 read partition
 mkfs.ext4 $partition
-read -p "Você lembrou de criar uma partição EFI? [s/n]" answer
-if [[ $answer = s ]] ; then
+read -p "Você lembrou de criar uma partição EFI? [s/n]" resposta
+if [[ $resposta = s ]] ; then
   echo "Informe a Partição EFI: "
   read efipartition
   mkfs.vfat -F 32 $efipartition

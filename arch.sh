@@ -12,6 +12,9 @@ read ROOT
 echo "Defina um username"
 read USER
 
+echo "Digite seu nome (Apenas primeiro nome)"
+read NAME 
+
 echo "Defina uma senha"
 read PASSWORD
 
@@ -33,13 +36,14 @@ while true; do
     if [[ $BOOT == 1 || $BOOT == 2 ]]; then
         break
     else
-        echo "Invalid input. Please enter either 1 or 2."
+        echo "Entrada inválida, selecione 1 ou 2."
     fi
 done
 
 # Criando sistema de arquivos
 
 echo -e "\nCriando Sistema de Arquivos...\n"
+
 existing_fs=$(blkid -s TYPE -o value "$EFI")
 if [[ "$existing_fs" != "vfat" ]]; then
     mkfs.vfat -F32 "$EFI"
@@ -101,7 +105,7 @@ echo "-----------------------------------------------------"
 echo "-------------DISPLAY E DRIVERS DE AUDIO--------------"
 echo "-----------------------------------------------------"
 
-pacman -S xorg pulseaudio --noconfirm --needed
+pacman -S xorg pipewire pipewire-alsa pipewire-pulse --noconfirm --needed
 
 systemctl enable NetworkManager
 

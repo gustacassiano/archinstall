@@ -110,22 +110,21 @@ pacman -S xorg pulseaudio --noconfirm --needed
 systemctl enable NetworkManager
 
 #DESKTOP
-if [[ $DESKTOP == '1']]
+if [[ $DESKTOP == '1' ]]
 then
     pacman -S gnome gdm --noconfirm --needed
     systemctl enable gdm
 
-elif [[ $DESKTOP == '2']]
+elif [[ $DESKTOP == '2' ]]
 then
     pacman -S plasma sddm kde-applications --noconfirm --needed
     systemctl enable sddm
 
 
-elif [[ $DESKTOP == '3']]
+elif [[ $DESKTOP == '3' ]]
 then
     pacman -S xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm -needed
     systemctl enable lightdm
-    
 else
     echo "Faça a instalação você mesmo"
 fi

@@ -16,7 +16,7 @@ welcome_screen() {
 ██╔══██╗██╔══██╗██╔════╝██║  ██║    ██║████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██║     ██║     
 ███████║██████╔╝██║     ███████║    ██║██╔██╗ ██║███████╗   ██║   ███████║██║     ██║     
 ██╔══██║██╔══██╗██║     ██╔══██║    ██║██║╚██╗██║╚════██║   ██║   ██╔══██║██║     ██║     
-██║  ██║██║  ██║╚██████╗██║  ██║    ██║██║ ╚████║███████║   ██║   ██║  ██║███████╗███████╗
+██║  ██║██║  ██║╚██████╗██║  ██║    ██║██║ ╚████║███████║   ██║   ██║  ██║███████╗██████���╗
 ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
                                                                                           
 
@@ -89,6 +89,8 @@ collect_user_info() {
         1 "YAY" \
         2 "PARU" \
         3 "Nenhum") || exit 1
+
+    swap_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Partição de Swap" --yesno "Deseja criar uma partição de swap?" 0 0)
 }
 
 # Função para particionar o disco
@@ -112,8 +114,10 @@ partition_disk() {
     fi
 
     # Swap e root
-    parted $device mkpart primary linux-swap 1GiB $((1 + ram_size))MiB
-    swap_partition="${device}2"
+    if [ "$swap_choice" -eq 0 ]; then
+        parted $device mkpart primary linux-swap 1GiB $((1 + ram_size))MiB
+        swap_partition="${device}2"
+    fi
     if [ "$encrypt_root" -eq 0 ]; then
         parted $device mkpart primary 1 $((1 + ram_size))MiB 100%
         root_partition="${device}3"
@@ -130,8 +134,10 @@ partition_disk() {
 # Função para formatar e montar partições
 format_and_mount_partitions() {
     mkfs.ext4 $root_partition
-    mkswap $swap_partition
-    swapon $swap_partition
+    if [ "$swap_choice" -eq 0 ]; then
+        mkswap $swap_partition
+        swapon $swap_partition
+    fi
 
     if [ "$firmware_choice" -eq 1 ]; then
         mkfs.fat -F32 $boot_partition

@@ -1,6 +1,9 @@
 #!/bin/bash
-printf '\033c'
-echo "
+
+# Função para exibir a tela de boas-vindas
+welcome_screen() {
+    printf '\033c'
+    echo "
 
  ██████╗ █████╗ ███╗   ███╗███████╗██╗██████╗  █████╗ ███████╗                            
 ██╔════╝██╔══██╗████╗ ████║██╔════╝██║██╔══██╗██╔══██╗██╔════╝                            
@@ -18,171 +21,162 @@ echo "
                                                                                           
 
 "
-# Configurações iniciais
-sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
-pacman --noconfirm -Sy archlinux-keyring
-loadkeys abnt-2
-timedatectl set-ntp true
-reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
+}
 
-# Garantindo que o pacote dialog está instalado
-if ! command -v dialog &> /dev/null; then
-    echo "O pacote 'dialog' não está instalado. Instalando..."
-    pacman --noconfirm -Sy dialog
-fi
+# Função para instalar pacotes essenciais
+install_essential_packages() {
+    pacman --noconfirm -Sy git dialog
+}
 
-# Limpa a tela e exibe a tela inicial
-printf '\033c'
-dialog --title "Bem-vindo" --msgbox "Bem-vindo ao instalador do Arch Linux por Gustavo Cameiras" 10 50
+# Função para exibir caixas de diálogo com fundo preto e dicas de teclas
+dialog_box() {
+    dialog --backtitle "Cameiras Arch Install" --title "$1" --msgbox "$2" 10 50
+}
 
-# Coleta de informações usando dialog
-hostname=$(dialog --stdout --inputbox "Insira seu hostname" 0 0) || exit 1
-: ${hostname:?"O hostname não pode estar vazio"}
+# Função para coletar informações do usuário
+collect_user_info() {
+    hostname=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Hostname" --inputbox "Insira seu hostname (Nome da máquina):" 0 0) || exit 1
+    : ${hostname:?"O hostname não pode estar vazio"}
 
-username=$(dialog --stdout --inputbox "Insira seu nome de usuário:" 0 0) || exit 1
-: ${username:?"O nome de usuário não pode estar vazio"}
+    username=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Nome de Usuário" --inputbox "Insira seu nome de usuário:" 0 0) || exit 1
+    : ${username:?"O nome de usuário não pode estar vazio"}
 
-password=$(dialog --stdout --passwordbox "Insira sua senha:" 0 0) || exit 1
-: ${password:?"Campo de senha não pode estar vazio"}
+    password=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Senha" --passwordbox "Insira sua senha:" 0 0) || exit 1
+    : ${password:?"Campo de senha não pode estar vazio"}
 
-password_confirm=$(dialog --stdout --passwordbox "Confirme sua senha:" 0 0) || exit 1
-if [ "$password" != "$password_confirm" ]; then
-    dialog --msgbox "As senhas não coincidem. Tente novamente." 0 0
-    exit 1
-fi
+    password_confirm=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Confirmação de Senha" --passwordbox "Confirme sua senha:" 0 0) || exit 1
+    if [ "$password" != "$password_confirm" ]; then
+        dialog --backtitle "Cameiras Arch Install" --msgbox "As senhas não coincidem. Tente novamente." 0 0
+        exit 1
+    fi
 
-# Opção para criptografar a partição root com LUKS
-encrypt_root=$(dialog --stdout --yesno "Deseja criptografar a partição root com LUKS?" 0 0)
-if [ $? -eq 0 ]; then
-    luks_passphrase=$(dialog --stdout --passwordbox "Insira a senha para criptografia LUKS:" 0 0) || exit 1
-    luks_autologin=$(dialog --stdout --yesno "Deseja ativar autologin após a senha de criptografia?" 0 0)
-fi
+    encrypt_root=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Criptografia de Disco" --yesno "Deseja criptografar a partição root com LUKS?" 0 0)
+    if [ $? -eq 0 ]; then
+        luks_passphrase=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Senha de Criptografia LUKS" --passwordbox "Insira a senha para criptografia LUKS:" 0 0) || exit 1
+        luks_autologin=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Autologin LUKS" --yesno "Deseja ativar autologin após a senha de criptografia?" 0 0)
+    fi
 
-# Seleção do disco de instalação
-devicelist=$(lsblk -dplnx size -o name,size | grep -Ev "boot|rpmb|loop" | tac)
-device=$(dialog --stdout --menu "Selecione o disco de instalação" 0 0 0 ${devicelist}) || exit 1
+    device=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Disco de Instalação" --menu "Selecione o disco de instalação" 0 0 0 $(lsblk -dplnx size -o name,size | grep -Ev "boot|rpmb|loop" | tac)) || exit 1
 
-# Escolha do sistema de boot
-boot_choice=$(dialog --stdout --menu "Escolha o sistema de boot:" 0 0 0 \
-    1 "GRUB" \
-    2 "Systemd-boot") || exit 1
+    boot_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Sistema de Boot" --menu "Escolha o sistema de boot:" 0 0 0 \
+        1 "GRUB" \
+        2 "Systemd-boot") || exit 1
 
-# Escolha do tipo de firmware
-firmware_choice=$(dialog --stdout --menu "Escolha o tipo de firmware:" 0 0 0 \
-    1 "EFI" \
-    2 "BIOS") || exit 1
+    firmware_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Tipo de Firmware" --menu "Escolha o tipo de firmware:" 0 0 0 \
+        1 "EFI" \
+        2 "BIOS") || exit 1
 
-# Seleção de pacotes essenciais (sempre instalados)
-packages="git wget vim sudo gnome-polkit"
+    drivers=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Drivers Gráficos" --checklist "Selecione os drivers gráficos:" 0 0 0 \
+        "intel" "Driver Intel" off \
+        "amd" "Driver AMD" off \
+        "nvidia" "Driver Nvidia (proprietário)" off \
+        "nvidia-open" "Driver Nvidia (open source)" off \
+        "virtualbox" "Driver VirtualBox" off \
+        "qxl" "Driver QXL (para VMs)" off) || exit 1
 
-# Seleção de drivers gráficos
-drivers=$(dialog --stdout --checklist "Selecione os drivers gráficos:" 0 0 0 \
-    "intel" "Driver Intel" off \
-    "amd" "Driver AMD" off \
-    "nvidia" "Driver Nvidia (proprietário)" off \
-    "nvidia-open" "Driver Nvidia (open source)" off \
-    "virtualbox" "Driver VirtualBox" off \
-    "qxl" "Driver QXL (para VMs)" off) || exit 1
+    desktop_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Ambiente de Desktop" --menu "Escolha o ambiente de desktop:" 0 0 0 \
+        1 "GNOME" \
+        2 "KDE" \
+        3 "XFCE" \
+        4 "Xorg (minimal)" \
+        5 "Nenhum") || exit 1
 
-# Converte a seleção de drivers em uma lista de pacotes
-drivers=$(echo $drivers | sed 's/\"//g')
+    audio_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Sistema de Áudio" --menu "Escolha o sistema de áudio:" 0 0 0 \
+        1 "PulseAudio" \
+        2 "Pipewire") || exit 1
 
-# Escolha do ambiente de desktop
-desktop_choice=$(dialog --stdout --menu "Escolha o ambiente de desktop:" 0 0 0 \
-    1 "GNOME" \
-    2 "KDE" \
-    3 "XFCE" \
-    4 "Xorg (minimal)" \
-    5 "Nenhum") || exit 1
+    aur_helper=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "AUR Helper" --menu "Deseja instalar um AUR Helper?" 0 0 0 \
+        1 "YAY" \
+        2 "PARU" \
+        3 "Nenhum") || exit 1
+}
 
-# Escolha entre PulseAudio e Pipewire
-audio_choice=$(dialog --stdout --menu "Escolha o sistema de áudio:" 0 0 0 \
-    1 "PulseAudio" \
-    2 "Pipewire") || exit 1
-
-# Escolha do AUR Helper
-aur_helper=$(dialog --stdout --menu "Deseja instalar um AUR Helper?" 0 0 0 \
-    1 "YAY" \
-    2 "PARU" \
-    3 "Nenhum") || exit 1
-
-# Obtém o tamanho da RAM disponível
-ram_size=$(free --mebi | awk '/Mem:/ { print $2 }') # Tamanho em MiB
-
-# Particionamento
-echo -ne "
+# Função para particionar o disco
+partition_disk() {
+    echo -ne "
 -------------------------------------------------------------------------
 		         Formatando Disco                    
 -------------------------------------------------------------------------
 "
-if [ "$firmware_choice" -eq 1 ]; then
-    # Partição EFI (mínimo 1GiB)
-    parted $device mklabel gpt
-    parted $device mkpart primary fat32 1MiB 1GiB
-    parted $device set 1 esp on
-    boot_partition="${device}1"
-else
-    # Partição BIOS
-    parted $device mklabel msdos
-    parted $device mkpart primary ext4 1MiB 1GiB
-    boot_partition="${device}1"
-fi
+    if [ "$firmware_choice" -eq 1 ]; then
+        # Partição EFI (mínimo 1GiB)
+        parted $device mklabel gpt
+        parted $device mkpart primary fat32 1MiB 1GiB
+        parted $device set 1 esp on
+        boot_partition="${device}1"
+    else
+        # Partição BIOS
+        parted $device mklabel msdos
+        parted $device mkpart primary ext4 1MiB 1GiB
+        boot_partition="${device}1"
+    fi
 
-# Swap e root
-parted $device mkpart primary linux-swap 1GiB $((1 + ram_size))MiB
-swap_partition="${device}2"
-if [ "$encrypt_root" -eq 0 ]; then
-    parted $device mkpart primary 1 $((1 + ram_size))MiB 100%
-    root_partition="${device}3"
-    cryptsetup luksFormat $root_partition
-    cryptsetup open $root_partition cryptroot
-    mkfs.ext4 /dev/mapper/cryptroot
-    root_partition="/dev/mapper/cryptroot"
-else
-    parted $device mkpart primary ext4 $((1 + ram_size))MiB 100%
-    root_partition="${device}3"
-fi
+    # Swap e root
+    parted $device mkpart primary linux-swap 1GiB $((1 + ram_size))MiB
+    swap_partition="${device}2"
+    if [ "$encrypt_root" -eq 0 ]; then
+        parted $device mkpart primary 1 $((1 + ram_size))MiB 100%
+        root_partition="${device}3"
+        cryptsetup luksFormat $root_partition
+        cryptsetup open $root_partition cryptroot
+        mkfs.ext4 /dev/mapper/cryptroot
+        root_partition="/dev/mapper/cryptroot"
+    else
+        parted $device mkpart primary ext4 $((1 + ram_size))MiB 100%
+        root_partition="${device}3"
+    fi
+}
 
-# Formatação
-mkfs.ext4 $root_partition
-mkswap $swap_partition
-swapon $swap_partition
+# Função para formatar e montar partições
+format_and_mount_partitions() {
+    mkfs.ext4 $root_partition
+    mkswap $swap_partition
+    swapon $swap_partition
 
-if [ "$firmware_choice" -eq 1 ]; then
-    mkfs.fat -F32 $boot_partition
-else
-    mkfs.ext4 $boot_partition
-fi
+    if [ "$firmware_choice" -eq 1 ]; then
+        mkfs.fat -F32 $boot_partition
+    else
+        mkfs.ext4 $boot_partition
+    fi
 
-# Montagem
-mount $root_partition /mnt
-mkdir /mnt/boot
-mount $boot_partition /mnt/boot
+    mount $root_partition /mnt
+    mkdir /mnt/boot
+    mount $boot_partition /mnt/boot
+}
 
-# Instalação dos pacotes base
-pacstrap /mnt base linux linux-firmware base-devel $packages
+# Função para instalar pacotes base
+install_base_packages() {
+    pacstrap /mnt base linux linux-firmware base-devel $packages
+}
 
-# Instalação de drivers gráficos
-pacstrap /mnt $drivers
+# Função para instalar drivers gráficos
+install_graphics_drivers() {
+    pacstrap /mnt $drivers
+}
 
-# Instalação de ambiente desktop (opcional)
-case $desktop_choice in
-    1) pacstrap /mnt gnome gdm ;;
-    2) pacstrap /mnt plasma kde-applications sddm ;;
-    3) pacstrap /mnt xfce4 xfce4-goodies lightdm ;;
-    4) pacstrap /mnt xorg ;;
-esac
+# Função para instalar ambiente de desktop (opcional)
+install_desktop_environment() {
+    case $desktop_choice in
+        1) pacstrap /mnt gnome gdm ;;
+        2) pacstrap /mnt plasma kde-applications sddm ;;
+        3) pacstrap /mnt xfce4 xfce4-goodies lightdm ;;
+        4) pacstrap /mnt xorg ;;
+    esac
+}
 
-# Instalação do sistema de áudio
-case $audio_choice in
-    1) pacstrap /mnt pulseaudio ;;
-    2) pacstrap /mnt pipewire ;;
-esac
+# Função para instalar sistema de áudio
+install_audio_system() {
+    case $audio_choice in
+        1) pacstrap /mnt pulseaudio ;;
+        2) pacstrap /mnt pipewire ;;
+    esac
+}
 
-# Configuração do sistema
-genfstab -U /mnt >> /mnt/etc/fstab
+# Função para configurar o sistema
+configure_system() {
+    genfstab -U /mnt >> /mnt/etc/fstab
 
-arch-chroot /mnt /bin/bash <<EOF
+    arch-chroot /mnt /bin/bash <<EOF
 # Configurações básicas
 ln -sf /usr/share/zoneinfo/$(curl -s http://ip-api.com/line?fields=timezone) /etc/localtime
 hwclock --systohc
@@ -249,8 +243,24 @@ case $aur_helper in
 esac
 
 EOF
+}
 
-# Finaliza a instalação
-echo "Instalação concluída. Desmonte as partições e reinicie."
-umount -R /mnt
-reboot
+# Função para finalizar a instalação
+finalize_installation() {
+    echo "Instalação concluída. Desmonte as partições e reinicie."
+    umount -R /mnt
+    reboot
+}
+
+# Início do script
+welcome_screen
+install_essential_packages
+collect_user_info
+partition_disk
+format_and_mount_partitions
+install_base_packages
+install_graphics_drivers
+install_desktop_environment
+install_audio_system
+configure_system
+finalize_installation

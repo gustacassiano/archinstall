@@ -14,19 +14,16 @@ echo "
 ███████║██████╔╝██║     ███████║    ██║██╔██╗ ██║███████╗   ██║   ███████║██║     ██║     
 ██╔══██║██╔══██╗██║     ██╔══██║    ██║██║╚██╗██║╚════██║   ██║   ██╔══██║██║     ██║     
 ██║  ██║██║  ██║╚██████╗██║  ██║    ██║██║ ╚████║███████║   ██║   ██║  ██║███████╗███████╗
-╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
+╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
                                                                                           
 
 "
 # Configurações iniciais
 sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
 pacman --noconfirm -Sy archlinux-keyring
-loadkeys br-abnt2
+loadkeys abnt-2
 timedatectl set-ntp true
 reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
-
-
-#!/bin/bash
 
 # Garantindo que o pacote dialog está instalado
 if ! command -v dialog &> /dev/null; then
@@ -86,6 +83,9 @@ drivers=$(dialog --stdout --checklist "Selecione os drivers gráficos:" 0 0 0 \
     "nvidia-open" "Driver Nvidia (open source)" off \
     "virtualbox" "Driver VirtualBox" off \
     "qxl" "Driver QXL (para VMs)" off) || exit 1
+
+# Converte a seleção de drivers em uma lista de pacotes
+drivers=$(echo $drivers | sed 's/\"//g')
 
 # Escolha do ambiente de desktop
 desktop_choice=$(dialog --stdout --menu "Escolha o ambiente de desktop:" 0 0 0 \
@@ -212,7 +212,6 @@ if [ "$boot_choice" -eq 1 ]; then
     fi
     grub-mkconfig -o /boot/grub/grub.cfg
 else
-    pacman -S systemd-boot --noconfirm
     bootctl install
     echo "title Arch Linux" > /boot/loader/entries/arch.conf
     echo "linux /vmlinuz-linux" >> /boot/loader/entries/arch.conf
@@ -224,6 +223,9 @@ fi
 pacman -S networkmanager ly --noconfirm
 systemctl enable ly
 systemctl enable NetworkManager
+
+# Habilitação do polkit
+systemctl enable polkit
 
 # Configuração do autologin (opcional)
 if [ "$luks_autologin" -eq 0 ]; then
@@ -245,9 +247,6 @@ case $aur_helper in
         sudo -u $username makepkg -si --noconfirm
         ;;
 esac
-
-# Habilita o polkit
-systemctl enable polkit
 
 EOF
 

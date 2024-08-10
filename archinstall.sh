@@ -15,8 +15,8 @@ welcome_screen() {
  ██████╗ █████╗ ███╗   ███╗███████╗██╗██████╗  █████╗ ███████╗                            
 ██╔════╝██╔══██╗████╗ ████║██╔════╝██║██╔══██╗██╔══██╗██╔════╝                            
 ██║     ███████║██╔████╔██║█████╗  ██║██████╔╝███████║███████╗                            
-██║     ██╔══██║██║╚██╔╝██║██╔══╝  ██║██╔══██╗██╔══██║╚════██║                            
-╚██████╗██║  ██║██║ ╚═╝ ██║███████╗██║██║  ██║██║  ██║███████║                            
+██║     ███╔══██║██║╚██╔╝██║██╔══╝  ██║██╔══██╗██╔══██║╚════██║                            
+╚██████╗██��  ██║██║ ╚═╝ ██║███████╗██║██║  ██║██║  ██║███████║                            
  ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝                            
                                                                                           
  █████╗ ██████╗  ██████╗██╗  ██╗    ██╗███╗   ██╗███████╗████████╗ █████╗ ██╗     ██╗     
@@ -88,6 +88,14 @@ collect_user_info() {
         3 "XFCE" \
         4 "Xorg (minimal)" \
         5 "Nenhum") || exit 1
+
+    firmware_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Firmware" --menu "Escolha o tipo de firmware (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
+        1 "EFI" \
+        2 "BIOS") || exit 1
+
+    boot_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Bootloader" --menu "Escolha o bootloader (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
+        1 "GRUB" \
+        2 "SYSTEMD") || exit 1
 
     aur_helper=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "AUR Helper" --menu "Deseja instalar um AUR Helper? (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
         1 "YAY" \
@@ -260,6 +268,7 @@ configure_system() {
                 echo "autologin-user=$username" >> /etc/lightdm/lightdm.conf
                 ;;
             4) 
+                pacman -S ly --noconfirm
                 systemctl enable ly
                 ;;
         esac
@@ -294,4 +303,6 @@ welcome_screen
 install_essential_packages
 collect_user_info
 configure_system
+
+
 

@@ -21,7 +21,7 @@ echo "
 # Configurações iniciais
 sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
 pacman --noconfirm -Sy archlinux-keyring
-loadkeys abnt-2
+loadkeys br-abnt2
 timedatectl set-ntp true
 reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
 

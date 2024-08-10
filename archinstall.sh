@@ -227,3 +227,9 @@ if [ "$luks_autologin" -eq 0 ]; then
     # Configurar o autologin aqui
 fi
 
+EOF
+
+# Finaliza a instalação
+echo "Instalação concluída. Desmonte as partições e reinicie."
+umount -R /mnt
+reboot

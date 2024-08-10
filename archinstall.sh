@@ -1,5 +1,4 @@
 #!/bin/bash
-
 printf '\033c'
 echo "
 
@@ -15,7 +14,7 @@ echo "
 ███████║██████╔╝██║     ███████║    ██║██╔██╗ ██║███████╗   ██║   ███████║██║     ██║     
 ██╔══██║██╔══██╗██║     ██╔══██║    ██║██║╚██╗██║╚════██║   ██║   ██╔══██║██║     ██║     
 ██║  ██║██║  ██║╚██████╗██║  ██║    ██║██║ ╚████║███████║   ██║   ██║  ██║███████╗███████╗
-╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
+╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═���  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
                                                                                           
 
 "
@@ -38,13 +37,6 @@ fi
 # Limpa a tela e exibe a tela inicial
 printf '\033c'
 dialog --title "Bem-vindo" --msgbox "Bem-vindo ao instalador do Arch Linux por Gustavo Cameiras" 10 50
-
-# Configurações iniciais
-sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
-pacman --noconfirm -Sy archlinux-keyring
-loadkeys abnt-2
-timedatectl set-ntp true
-reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
 
 # Coleta de informações usando dialog
 hostname=$(dialog --stdout --inputbox "Insira seu hostname" 0 0) || exit 1
@@ -83,12 +75,8 @@ firmware_choice=$(dialog --stdout --menu "Escolha o tipo de firmware:" 0 0 0 \
     1 "EFI" \
     2 "BIOS") || exit 1
 
-# Seleção de pacotes essenciais
-packages=$(dialog --stdout --checklist "Selecione os pacotes essenciais:" 0 0 0 \
-    "git" "Sistema de controle de versão" off \
-    "wget" "Utilitário para download via linha de comando" off \
-    "vim" "Editor de texto" off \
-    "sudo" "Permite o uso de privilégios elevados" off) || exit 1
+# Seleção de pacotes essenciais (sempre instalados)
+packages="git wget vim sudo gnome-polkit"
 
 # Seleção de drivers gráficos
 drivers=$(dialog --stdout --checklist "Selecione os drivers gráficos:" 0 0 0 \
@@ -106,6 +94,11 @@ desktop_choice=$(dialog --stdout --menu "Escolha o ambiente de desktop:" 0 0 0 \
     3 "XFCE" \
     4 "Xorg (minimal)" \
     5 "Nenhum") || exit 1
+
+# Escolha entre PulseAudio e Pipewire
+audio_choice=$(dialog --stdout --menu "Escolha o sistema de áudio:" 0 0 0 \
+    1 "PulseAudio" \
+    2 "Pipewire") || exit 1
 
 # Escolha do AUR Helper
 aur_helper=$(dialog --stdout --menu "Deseja instalar um AUR Helper?" 0 0 0 \
@@ -180,6 +173,12 @@ case $desktop_choice in
     4) pacstrap /mnt xorg ;;
 esac
 
+# Instalação do sistema de áudio
+case $audio_choice in
+    1) pacstrap /mnt pulseaudio ;;
+    2) pacstrap /mnt pipewire ;;
+esac
+
 # Configuração do sistema
 genfstab -U /mnt >> /mnt/etc/fstab
 
@@ -196,8 +195,11 @@ echo "::1       localhost" >> /etc/hosts
 echo "127.0.1.1 $hostname.localdomain $hostname" >> /etc/hosts
 
 echo "Criando o usuário..."
-useradd -m $username
+useradd -m -G wheel,audio,video $username
 echo "$username:$password" | chpasswd
+
+# Adiciona o usuário ao sudoers
+echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 
 echo "Instalando e configurando o sistema de boot..."
 if [ "$boot_choice" -eq 1 ]; then
@@ -219,13 +221,33 @@ else
 fi
 
 # Instalação e ativação do NetworkManager
-pacman -S networkmanager --noconfirm
+pacman -S networkmanager ly --noconfirm
+systemctl enable ly
 systemctl enable NetworkManager
 
 # Configuração do autologin (opcional)
 if [ "$luks_autologin" -eq 0 ]; then
     # Configurar o autologin aqui
 fi
+
+# Instalação do AUR Helper
+case $aur_helper in
+    1)
+        git clone https://aur.archlinux.org/yay.git /home/$username/yay
+        chown -R $username:$username /home/$username/yay
+        cd /home/$username/yay
+        sudo -u $username makepkg -si --noconfirm
+        ;;
+    2)
+        git clone https://aur.archlinux.org/paru.git /home/$username/paru
+        chown -R $username:$username /home/$username/paru
+        cd /home/$username/paru
+        sudo -u $username makepkg -si --noconfirm
+        ;;
+esac
+
+# Habilita o polkit
+systemctl enable polkit
 
 EOF
 

@@ -27,282 +27,199 @@ welcome_screen() {
 ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
                                                                                           
 
-"
+}
+
+# Função para instalar pacotes iniciais
+install_initial_packages() {
+    pacman --noconfirm -Sy git dialog
+}
+
+# Função para configurações iniciais
+initial_setup() {
+    pacman --noconfirm -Sy archlinux-keyring
+    loadkeys abnt-2
+    timedatectl set-ntp true
+    lsblk
+    reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
+    mkdir /mnt &>/dev/null
+}
+
+# Função para obter informações do usuário
+get_user_info() {
+    dialog --backtitle "Cameiras Arch Install" --title "Configuração do Usuário" --inputbox "Digite o nome de usuário:" 10 60 2>username.txt
+    dialog --backtitle "Cameiras Arch Install" --title "Configuração do Usuário" --passwordbox "Digite a senha:" 10 60 2>password.txt
+    dialog --backtitle "Cameiras Arch Install" --title "Configuração do Hostname" --inputbox "Digite o nome da máquina (hostname):" 10 60 2>hostname.txt
+}
+
+# Fun��ão para escolher opções de instalação
+choose_install_options() {
+    dialog --backtitle "Cameiras Arch Install" --title "Opções de Instalação" --menu "Escolha uma opção de encriptação LUKS:" 15 60 2 \
+    1 "Sim" \
+    2 "Não" 2>encryption.txt
+
+    dialog --backtitle "Cameiras Arch Install" --title "Drivers de Vídeo" --checklist "Escolha os drivers de vídeo:" 15 60 5 \
+    1 "Intel" off \
+    2 "AMD" off \
+    3 "NVIDIA Proprietário" off \
+    4 "NVIDIA Open Source" off \
+    5 "Máquinas Virtuais" off 2>video_drivers.txt
+
+    dialog --backtitle "Cameiras Arch Install" --title "Drivers de Áudio" --menu "Escolha um driver de áudio:" 15 60 2 \
+    1 "Pulseaudio" \
+    2 "Pipewire" 2>audio_driver.txt
+
+    dialog --backtitle "Cameiras Arch Install" --title "Tipo de Boot" --menu "Escolha o tipo de Boot:" 15 60 2 \
+    1 "EFI" \
+    2 "BIOS" 2>boot_type.txt
+
+    dialog --backtitle "Cameiras Arch Install" --title "Gerenciador de Boot" --menu "Escolha um gerenciador de Boot:" 15 60 2 \
+    1 "GRUB" \
+    2 "SystemD" 2>boot_manager.txt
+
+    dialog --backtitle "Cameiras Arch Install" --title "Ambiente de Desktop" --menu "Escolha um ambiente de desktop:" 15 60 5 \
+    1 "Gnome" \
+    2 "KDE" \
+    3 "XFCE" \
+    4 "Xorg (minimal)" \
+    5 "Nenhum (servidores)" 2>desktop_environment.txt
+
+    dialog --backtitle "Cameiras Arch Install" --title "AUR Helper" --menu "Escolha um AUR helper:" 15 60 3 \
+    1 "YAY" \
+    2 "Paru" \
+    3 "Nenhum" 2>aur_helper.txt
+}
+
+# Função para selecionar o disco e criar partições
+partition_disk() {
+    disks=$(lsblk -dn -o NAME,SIZE | awk '{print "/dev/" $1 " (" $2 ")"}')
+    dialog --backtitle "Cameiras Arch Install" --title "Seleção de Disco" --menu "Escolha o disco para particionar:" 15 60 4 ${disks} 2>disk.txt
+    disk=$(cat disk.txt)
+
+    dialog --backtitle "Cameiras Arch Install" --title "Partição Swap" --yesno "Deseja criar uma partição de swap?" 10 60
+    swap_choice=$?
+
+    # Tamanho da memória RAM em MiB
+    ram_size=$(grep MemTotal /proc/meminfo | awk '{print $2 / 1024}')
+
+    # Criar partições
+    parted -s $disk mklabel gpt
+    parted -s $disk mkpart primary ext4 1MiB 1GiB
+    parted -s $disk name 1 boot
+    parted -s $disk set 1 boot on
+
+    if [ $swap_choice -eq 0 ]; then
+        parted -s $disk mkpart primary linux-swap 1GiB $(echo "1GiB + ${ram_size}MiB" | bc)
+        parted -s $disk name 2 swap
+        swap_end=$(echo "1GiB + ${ram_size}MiB" | bc)
+    else
+        swap_end="1GiB"
+    fi
+
+    parted -s $disk mkpart primary ext4 ${swap_end} 100%
+    parted -s $disk name 3 root
+
+    # Formatar partições
+    mkfs.ext4 ${disk}1
+    if [ $swap_choice -eq 0 ]; then
+        mkswap ${disk}2
+        swapon ${disk}2
+    fi
+    mkfs.ext4 ${disk}3
+
+    # Montar partições
+    mount ${disk}3 /mnt
+    mkdir /mnt/boot
+    mount ${disk}1 /mnt/boot
 }
 
 # Função para instalar pacotes essenciais
 install_essential_packages() {
-    pacman --noconfirm -Sy git dialog archlinux-keyring
-    loadkeys br-abnt2
-    timedatectl set-ntp true
-    lsblk
-    reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
-}
-
-# Função para exibir caixas de diálogo com fundo preto e dicas de teclas
-dialog_box() {
-    dialog --backtitle "Cameiras Arch Install" --title "$1" --msgbox "$2" 10 50
-}
-
-# Função para coletar informações do usuário
-collect_user_info() {
-    hostname=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Hostname" --inputbox "Insira seu hostname (Nome da máquina):" 0 0) || exit 1
-    : ${hostname:?"O hostname não pode estar vazio"}
-
-    username=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Nome de Usuário" --inputbox "Insira seu nome de usuário:" 0 0) || exit 1
-    : ${username:?"O nome de usuário não pode estar vazio"}
-
-    password=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Senha" --passwordbox "Insira sua senha:" 0 0) || exit 1
-    : ${password:?"Campo de senha não pode estar vazio"}
-
-    password_confirm=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Confirmação de Senha" --passwordbox "Confirme sua senha:" 0 0) || exit 1
-    if [ "$password" != "$password_confirm" ]; then
-        dialog --backtitle "Cameiras Arch Install" --msgbox "As senhas não coincidem. Tente novamente." 0 0
-        exit 1
-    fi
-
-    encrypt_root=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Criptografia LUKS" --yesno "Deseja criptografar a partição root com LUKS?" 0 0)
-    if [ $? -eq 0 ]; then
-        luks_passphrase=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Senha LUKS" --passwordbox "Insira a senha para criptografia LUKS:" 0 0) || exit 1
-        luks_autologin=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Autologin LUKS" --yesno "Deseja ativar autologin após a senha de criptografia?" 0 0)
-    fi
-
-    use_swap=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Partição Swap" --yesno "Deseja criar uma partição swap?" 0 0)
-
-    drivers=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Drivers Gráficos" --checklist "Selecione os drivers gráficos (Use a barra de espaço para selecionar e Enter para avançar):" 0 0 0 \
-        "intel" "Driver Intel" off \
-        "amd" "Driver AMD" off \
-        "nvidia" "Driver Nvidia (proprietário)" off \
-        "nvidia-open" "Driver Nvidia (open source)" off \
-        "virtualbox" "Driver VirtualBox" off \
-        "qxl" "Driver QXL (para VMs)" off) || exit 1
-    drivers=$(echo $drivers | sed 's/\"//g')
-
-    audio_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Sistema de Áudio" --menu "Escolha o sistema de áudio (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
-        1 "PulseAudio" \
-        2 "Pipewire") || exit 1
-
-    desktop_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Ambiente de Desktop" --menu "Escolha o ambiente de desktop (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
-        1 "GNOME" \
-        2 "KDE" \
-        3 "XFCE" \
-        4 "Xorg (minimal)" \
-        5 "Nenhum") || exit 1
-
-    firmware_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Firmware" --menu "Escolha o tipo de firmware (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
-        1 "EFI" \
-        2 "BIOS") || exit 1
-
-    boot_choice=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Bootloader" --menu "Escolha o bootloader (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
-        1 "GRUB" \
-        2 "SYSTEMD") || exit 1
-
-    aur_helper=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "AUR Helper" --menu "Deseja instalar um AUR Helper? (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 \
-        1 "YAY" \
-        2 "PARU" \
-        3 "Nenhum") || exit 1
+    pacman --noconfirm -S git wget vim
 }
 
 # Função para configurar o sistema
 configure_system() {
-    # Configurações iniciais
-    sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
-    pacman --noconfirm -Sy archlinux-keyring
-    loadkeys abnt-2
-    timedatectl set-ntp true
-    reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
+    # Adicionar usuário aos grupos necessários
+    useradd -m -G wheel,audio,video -s /bin/bash $(cat username.txt)
+    echo "$(cat username.txt):$(cat password.txt)" | chpasswd
 
-    # Particionamento
-    devicelist=$(lsblk -dplnx size -o name,size | grep -Ev "boot|rpmb|loop" | tac)
-    device=$(dialog --stdout --backtitle "Cameiras Arch Install" --title "Disco de Instalação" --menu "Selecione o disco de instalação (Use as setas para cima/baixo para selecionar e Enter para avançar):" 0 0 0 ${devicelist}) || exit 1
-
-    echo -ne "
-    -------------------------------------------------------------------------
-                     Formatando Disco                    
-    -------------------------------------------------------------------------
-    "
-    if [ "$firmware_choice" -eq 1 ]; then
-        # Partição EFI (mínimo 1GiB)
-        parted $device mklabel gpt
-        parted $device mkpart primary fat32 1MiB 1GiB
-        parted $device set 1 esp on
-        boot_partition="${device}1"
-    else
-        # Partição BIOS
-        parted $device mklabel msdos
-        parted $device mkpart primary ext4 1MiB 1GiB
-        boot_partition="${device}1"
-    fi
-
-    # Swap e root
-    if [ "$use_swap" -eq 0 ]; then
-        ram_size=$(free --mebi | awk '/Mem:/ { print $2 }') # Tamanho em MiB
-        parted $device mkpart primary linux-swap 1GiB $((1 + ram_size))MiB
-        swap_partition="${device}2"
-        if [ "$encrypt_root" -eq 0 ]; then
-            parted $device mkpart primary 1 $((1 + ram_size))MiB 100%
-            root_partition="${device}3"
-            cryptsetup luksFormat $root_partition
-            cryptsetup open $root_partition cryptroot
-            mkfs.ext4 /dev/mapper/cryptroot
-            root_partition="/dev/mapper/cryptroot"
-        else
-            parted $device mkpart primary ext4 $((1 + ram_size))MiB 100%
-            root_partition="${device}3"
-        fi
-    else
-        if [ "$encrypt_root" -eq 0 ]; then
-            parted $device mkpart primary 1GiB 100%
-            root_partition="${device}2"
-            cryptsetup luksFormat $root_partition
-            cryptsetup open $root_partition cryptroot
-            mkfs.ext4 /dev/mapper/cryptroot
-            root_partition="/dev/mapper/cryptroot"
-        else
-            parted $device mkpart primary ext4 1GiB 100%
-            root_partition="${device}2"
-        fi
-    fi
-
-    if [ "$firmware_choice" -eq 1 ]; then
-        mkfs.fat -F32 $boot_partition
-    else
-        mkfs.ext4 $boot_partition
-    fi
-
-    # Montagem
-    mount $root_partition /mnt
-    mkdir /mnt/boot
-    mount $boot_partition /mnt/boot
-
-    if [ "$use_swap" -eq 0 ]; then
-        mkswap $swap_partition
-        swapon $swap_partition
-    fi
-
-    # Instalação dos pacotes base
-    pacstrap /mnt base linux linux-firmware base-devel git wget vim
-
-    # Instalação de drivers gráficos
-    pacstrap /mnt $drivers
-
-    # Instalação de ambiente desktop (opcional)
-    case $desktop_choice in
-        1) pacstrap /mnt gnome gdm ;;
-        2) pacstrap /mnt plasma kde-applications sddm ;;
-        3) pacstrap /mnt xfce4 xfce4-goodies lightdm ;;
-        4) pacstrap /mnt xorg ly ;;
-    esac
-
-    # Instalação do sistema de áudio
-    case $audio_choice in
-        1) pacstrap /mnt pulseaudio ;;
-        2) pacstrap /mnt pipewire ;;
-    esac
-
-    # Configuração do sistema
-    genfstab -U /mnt >> /mnt/etc/fstab
-
-    arch-chroot /mnt /bin/bash <<EOF
-    # Configurações básicas
-    ln -sf /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
-    hwclock --systohc
-
-    echo "LANG=pt_BR.UTF-8" > /etc/locale.conf
-    echo "$hostname" > /etc/hostname
-
-    echo "127.0.0.1 localhost" >> /etc/hosts
-    echo "::1       localhost" >> /etc/hosts
-    echo "127.0.1.1 $hostname.localdomain $hostname" >> /etc/hosts
-
-    echo "Criando o usuário..."
-    useradd -m -G wheel,audio,video $username
-    echo "$username:$password" | chpasswd
-
-    # Adiciona o usuário ao sudoers
+    # Configurar sudoers
     echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 
-    echo "Instalando e configurando o sistema de boot..."
-    if [ "$boot_choice" -eq 1 ]; then
-        pacman -S grub --noconfirm
-        if [ "$firmware_choice" -eq 1 ]; then
-            pacman -S efibootmgr --noconfirm
-            grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
-        else
-            grub-install --target=i386-pc $device
-        fi
-        grub-mkconfig -o /boot/grub/grub.cfg
-    else
-        bootctl install
-        echo "title Arch Linux" > /boot/loader/entries/arch.conf
-        echo "linux /vmlinuz-linux" >> /boot/loader/entries/arch.conf
-        echo "initrd /initramfs-linux.img" >> /boot/loader/entries/arch.conf
-        echo "options root=PARTUUID=$(blkid -s PARTUUID -o value $root_partition) rw" >> /boot/loader/entries/arch.conf
-    fi
-
-    # Instalação e ativação do NetworkManager
-    pacman -S networkmanager --noconfirm
+    # Ativar serviços
+    systemctl enable ly
     systemctl enable NetworkManager
-
-    # Habilitação do polkit
     systemctl enable polkit
 
-    # Configuração do autologin (opcional)
-    if [ "$luks_autologin" -eq 0 ]; then
-        case $desktop_choice in
-            1) 
-                mkdir -p /etc/gdm
-                echo "[daemon]" > /etc/gdm/custom.conf
-                echo "AutomaticLoginEnable=True" >> /etc/gdm/custom.conf
-                echo "AutomaticLogin=$username" >> /etc/gdm/custom.conf
-                ;;
-            2) 
-                mkdir -p /etc/sddm.conf.d
-                echo "[Autologin]" > /etc/sddm.conf.d/autologin.conf
-                echo "User=$username" >> /etc/sddm.conf.d/autologin.conf
-                echo "Session=plasma.desktop" >> /etc/sddm.conf.d/autologin.conf
-                ;;
-            3) 
-                mkdir -p /etc/lightdm
-                echo "[Seat:*]" > /etc/lightdm/lightdm.conf
-                echo "autologin-user=$username" >> /etc/lightdm/lightdm.conf
-                ;;
-            4) 
-                pacman -S ly --noconfirm
-                systemctl enable ly
-                ;;
-        esac
-    fi
-
-    # Instalação do AUR Helper
-    case $aur_helper in
-        1)
-            git clone https://aur.archlinux.org/yay.git /home/$username/yay
-            chown -R $username:$username /home/$username/yay
-            cd /home/$username/yay
-            sudo -u $username makepkg -si --noconfirm
-            ;;
-        2)
-            git clone https://aur.archlinux.org/paru.git /home/$username/paru
-            chown -R $username:$username /home/$username/paru
-            cd /home/$username/paru
-            sudo -u $username makepkg -si --noconfirm
-            ;;
+    # Instalar e configurar o polkit
+    case $(cat desktop_environment.txt) in
+        1) pacman --noconfirm -S gnome-polkit ;;
+        2) pacman --noconfirm -S kde-polkit ;;
+        3) pacman --noconfirm -S xfce-polkit ;;
+        4) pacman --noconfirm -S gnome-polkit ;;
     esac
 
-EOF
+    # Instalar e configurar o login manager
+    if [ $(cat desktop_environment.txt) -eq 4 ]; then
+        pacman --noconfirm -S ly
+    fi
 
-    # Finaliza a instalação
-    echo "Instalação concluída. Desmonte as partições e reinicie."
-    umount -R /mnt
-    reboot
+    # Instalar e configurar o network manager
+    pacman --noconfirm -S networkmanager
+    systemctl enable NetworkManager
+
+    # Instalar navegador Firefox se um desktop environment foi selecionado
+    if [ $(cat desktop_environment.txt) -ne 5 ]; then
+        pacman --noconfirm -S firefox
+    fi
+
+    # Instalar AUR helper se selecionado
+    case $(cat aur_helper.txt) in
+        1) git clone https://aur.archlinux.org/yay.git 
+             cd yay
+             makepkg -si
+             cd ;;
+        2) git clone https://aur.archlinux.org/paru.git
+             cd paru
+             makepkg -si
+             cd ;;
+            
+    esac
 }
 
-# Execução do script
-welcome_screen
-install_essential_packages
-collect_user_info
-configure_system
+# Função para finalizar a instalação
+finalize_installation() {
+    dialog --backtitle "Cameiras Arch Install" --title "Instalação Completa" --yesno "A instalação do Arch Linux foi concluída com sucesso! Deseja reiniciar o sistema agora?" 10 60
+    if [ $? -eq 0 ]; then
+        reboot
+    else
+        dialog --backtitle "Cameiras Arch Install" --title "Continuar para chroot" --msgbox "Você pode continuar para o chroot para realizar configurações adicionais." 10 60
+        arch-chroot /mnt
+    fi
+}
+
+# Função para exibir mensagens de erro
+show_errors() {
+    if [ -s /tmp/install_errors.log ]; then
+        dialog --backtitle "Cameiras Arch Install" --title "Erros de Instalação" --textbox /tmp/install_errors.log 20 60
+    fi
+}
+
+# Função principal
+main() {
+    welcome_screen
+    install_initial_packages
+    initial_setup
+    get_user_info
+    choose_install_options
+    partition_disk
+    install_essential_packages
+    configure_system
+    show_errors
+    finalize_installation
+}
+
+main
 
 
 

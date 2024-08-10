@@ -224,8 +224,7 @@ configure_system() {
     fi
 
     # Instalação e ativação do NetworkManager
-    pacman -S networkmanager ly --noconfirm
-    systemctl enable ly
+    pacman -S networkmanager --noconfirm
     systemctl enable NetworkManager
 
     # Habilitação do polkit
@@ -233,7 +232,29 @@ configure_system() {
 
     # Configuração do autologin (opcional)
     if [ "$luks_autologin" -eq 0 ]; then
-        # Configurar o autologin aqui
+        case $desktop_choice in
+            1) 
+                mkdir -p /etc/gdm
+                echo "[daemon]" > /etc/gdm/custom.conf
+                echo "AutomaticLoginEnable=True" >> /etc/gdm/custom.conf
+                echo "AutomaticLogin=$username" >> /etc/gdm/custom.conf
+                ;;
+            2) 
+                mkdir -p /etc/sddm.conf.d
+                echo "[Autologin]" > /etc/sddm.conf.d/autologin.conf
+                echo "User=$username" >> /etc/sddm.conf.d/autologin.conf
+                echo "Session=plasma.desktop" >> /etc/sddm.conf.d/autologin.conf
+                ;;
+            3) 
+                mkdir -p /etc/lightdm
+                echo "[Seat:*]" > /etc/lightdm/lightdm.conf
+                echo "autologin-user=$username" >> /etc/lightdm/lightdm.conf
+                ;;
+            4) 
+                pacman -S ly --noconfirm
+                systemctl enable ly
+                ;;
+        esac
     fi
 
     # Instalação do AUR Helper

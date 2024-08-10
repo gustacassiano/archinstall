@@ -1,8 +1,15 @@
 #!/bin/bash
 
+# Verifica se o script está sendo executado como root
+if [ "$EUID" -ne 0 ]; then
+    echo "Por favor, execute como root"
+    exit 1
+fi
+
 # Função para exibir a tela de boas-vindas
 welcome_screen() {
     printf '\033c'
+    echo "Bem-vindo ao instalador do Arch Linux por Gustavo Cameiras"
     echo "
 
  ██████╗ █████╗ ███╗   ███╗███████╗██╗██████╗  █████╗ ███████╗                            
@@ -17,7 +24,7 @@ welcome_screen() {
 ███████║██████╔╝██║     ███████║    ██║██╔██╗ ██║███████╗   ██║   ███████║██║     ██║     
 ██╔══██║██╔══██╗██║     ██╔══██║    ██║██║╚██╗██║╚════██║   ██║   ██╔══██║██║     ██║     
 ██║  ██║██║  ██║╚██████╗██║  ██║    ██║██║ ╚████║███████║   ██║   ██║  ██║███████╗███████╗
-╚═╝  ╚���╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
+╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
                                                                                           
 
 "
@@ -25,7 +32,11 @@ welcome_screen() {
 
 # Função para instalar pacotes essenciais
 install_essential_packages() {
-    pacman --noconfirm -Sy git dialog
+    pacman --noconfirm -Sy git dialog archlinux-keyring
+    loadkeys br-abnt2
+    timedatectl set-ntp true
+    lsblk
+    reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
 }
 
 # Função para exibir caixas de diálogo com fundo preto e dicas de teclas
@@ -133,7 +144,7 @@ configure_system() {
         fi
     else
         if [ "$encrypt_root" -eq 0 ]; then
-            parted $device mkpart primary 1 100%
+            parted $device mkpart primary 1GiB 100%
             root_partition="${device}2"
             cryptsetup luksFormat $root_partition
             cryptsetup open $root_partition cryptroot
@@ -143,13 +154,6 @@ configure_system() {
             parted $device mkpart primary ext4 1GiB 100%
             root_partition="${device}2"
         fi
-    fi
-
-    # Formatação
-    mkfs.ext4 $root_partition
-    if [ "$use_swap" -eq 0 ]; then
-        mkswap $swap_partition
-        swapon $swap_partition
     fi
 
     if [ "$firmware_choice" -eq 1 ]; then
@@ -163,8 +167,13 @@ configure_system() {
     mkdir /mnt/boot
     mount $boot_partition /mnt/boot
 
+    if [ "$use_swap" -eq 0 ]; then
+        mkswap $swap_partition
+        swapon $swap_partition
+    fi
+
     # Instalação dos pacotes base
-    pacstrap /mnt base linux linux-firmware base-devel $packages
+    pacstrap /mnt base linux linux-firmware base-devel git wget vim
 
     # Instalação de drivers gráficos
     pacstrap /mnt $drivers
@@ -174,7 +183,7 @@ configure_system() {
         1) pacstrap /mnt gnome gdm ;;
         2) pacstrap /mnt plasma kde-applications sddm ;;
         3) pacstrap /mnt xfce4 xfce4-goodies lightdm ;;
-        4) pacstrap /mnt xorg ;;
+        4) pacstrap /mnt xorg ly ;;
     esac
 
     # Instalação do sistema de áudio
@@ -188,10 +197,10 @@ configure_system() {
 
     arch-chroot /mnt /bin/bash <<EOF
     # Configurações básicas
-    ln -sf /usr/share/zoneinfo/$(curl -s http://ip-api.com/line?fields=timezone) /etc/localtime
+    ln -sf /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
     hwclock --systohc
 
-    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+    echo "LANG=pt_BR.UTF-8" > /etc/locale.conf
     echo "$hostname" > /etc/hostname
 
     echo "127.0.0.1 localhost" >> /etc/hosts
@@ -251,7 +260,6 @@ configure_system() {
                 echo "autologin-user=$username" >> /etc/lightdm/lightdm.conf
                 ;;
             4) 
-                pacman -S ly --noconfirm
                 systemctl enable ly
                 ;;
         esac

@@ -9,7 +9,7 @@ echo "
 ██║     ███████║██╔████╔██║█████╗  ██║██████╔╝███████║███████╗                            
 ██║     ██╔══██║██║╚██╔╝██║██╔══╝  ██║██╔══██╗██╔══██║╚════██║                            
 ╚██████╗██║  ██║██║ ╚═╝ ██║███████╗██║██║  ██║██║  ██║███████║                            
- ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝                            
+ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═���╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝                            
                                                                                           
  █████╗ ██████╗  ██████╗██╗  ██╗    ██╗███╗   ██╗███████╗████████╗ █████╗ ██╗     ██╗     
 ██╔══██╗██╔══██╗██╔════╝██║  ██║    ██║████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██║     ██║     
@@ -37,9 +37,6 @@ if ! command -v git &> /dev/null; then
     pacman -Sy --noconfirm git
 fi
 
-# Tela de boas-vindas
-dialog --colors --backtitle "\Zb\Z0" --msgbox "Bem-vindo ao script de instalação do Arch Linux!" 10 50
-
 # Função para obter a lista de discos disponíveis
 get_disks() {
     lsblk -d -n -o NAME,SIZE | awk '{print "/dev/" $1 " (" $2 ")"}'
@@ -51,24 +48,26 @@ get_ram() {
 }
 
 # Seleção do disco
-DISK=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o disco para instalação:" 0 0 0 $(get_disks))
-if [ -z "$DISK" ]; then
-    echo "Nenhum disco selecionado. Saindo..."
-    exit 1
-fi
+clear
+echo "Discos disponíveis:"
+get_disks
+read -p "Digite o nome do disco para instalação (ex: /dev/sda): " DISK
 
 # Seleção do tipo de inicialização
-BOOT_TYPE=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o tipo de inicialização:" 10 50 2 \
-    1 "BIOS" \
-    2 "EFI")
+clear
+echo "Selecione o tipo de inicialização:"
+echo "1) BIOS"
+echo "2) EFI"
+read -p "Digite o número da opção desejada: " BOOT_TYPE
 
 # Seleção do gerenciador de boot
-BOOTLOADER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o gerenciador de boot:" 10 50 2 \
-    1 "GRUB" \
-    2 "SystemD-boot")
+clear
+echo "Selecione o gerenciador de boot:"
+echo "1) GRUB"
+echo "2) SystemD-boot"
+read -p "Digite o número da opção desejada: " BOOTLOADER
 
 # Particionamento do disco
-(
 echo "Criando tabela de partições..."
 parted -s "$DISK" mklabel gpt
 
@@ -83,16 +82,14 @@ fi
 
 echo "Criando partição root..."
 parted -s "$DISK" mkpart primary ext4 1GiB 100%
-) | dialog --colors --backtitle "\Zb\Z0" --progressbox "Particionando o disco..." 20 60
 
 # Perguntar se o usuário deseja criar uma partição swap
-dialog --colors --backtitle "\Zb\Z0" --yesno "Deseja criar uma partição swap?" 7 40
-if [ $? -eq 0 ]; then
+clear
+read -p "Deseja criar uma partição swap? (s/n): " CREATE_SWAP
+if [[ $CREATE_SWAP =~ ^[Ss]$ ]]; then
     RAM_SIZE=$(get_ram)
-    (
     echo "Criando partição swap..."
     parted -s "$DISK" mkpart primary linux-swap 1GiB $((1 + RAM_SIZE))MiB
-    ) | dialog --colors --backtitle "\Zb\Z0" --progressbox "Criando partição swap..." 20 60
     SWAP_PART="${DISK}2"
     ROOT_PART="${DISK}3"
 else
@@ -125,27 +122,24 @@ genfstab -U /mnt >> /mnt/etc/fstab
 # Chroot no novo sistema
 arch-chroot /mnt <<EOF
 # Configurações de fuso horário
-ln -sf /usr/share/zoneinfo/Region/City /etc/localtime
+ln -sf /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
 hwclock --systohc
 
 # Configurações de localidade
 echo "pt_BR.UTF-8 UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=pt_BR.UTF-8" > /etc/locale.conf
+echo "KEYMAP=abnt-2" > /etc/vconsole.conf
 
-# Configurações de rede
+# Configuração de rede
 echo "archlinux" > /etc/hostname
-echo "127.0.0.1   localhost" >> /etc/hosts
-echo "::1         localhost" >> /etc/hosts
-echo "127.0.1.1   archlinux.localdomain archlinux" >> /etc/hosts
+echo "127.0.0.1 localhost" >> /etc/hosts
+echo "::1       localhost" >> /etc/hosts
+echo "127.0.1.1 archlinux.localdomain archlinux" >> /etc/hosts
 
-# Configuração do root
-echo "Defina a senha do root"
-passwd
-
-# Instalação do gerenciador de boot
+# Instalação do bootloader
 if [ "$BOOTLOADER" -eq 1 ]; then
-    pacman -S grub --noconfirm
+    pacman -S grub efibootmgr --noconfirm
     if [ "$BOOT_TYPE" -eq 2 ]; then
         grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
     else
@@ -172,38 +166,27 @@ fi
 systemctl enable NetworkManager
 
 # Criação de usuário
-USERNAME=$(dialog --colors --backtitle "\Zb\Z0" --stdout --inputbox "Digite o nome do usuário:" 10 50)
-if [ -z "$USERNAME" ]; then
-    echo "Nenhum nome de usuário fornecido. Saindo..."
-    exit 1
-fi
-
-while true; do
-    PASSWORD=$(dialog --colors --backtitle "\Zb\Z0" --stdout --passwordbox "Digite a senha do usuário:" 10 50)
-    PASSWORD_CONFIRM=$(dialog --colors --backtitle "\Zb\Z0" --stdout --passwordbox "Confirme a senha do usuário:" 10 50)
-    if [ "$PASSWORD" == "$PASSWORD_CONFIRM" ]; then
-        break
-    else
-        dialog --colors --backtitle "\Zb\Z0" --msgbox "As senhas não coincidem. Tente novamente." 10 50
-    fi
-done
-
+clear
+read -p "Digite o nome do usuário: " USERNAME
 useradd -m -G wheel,audio,video -s /bin/bash "$USERNAME"
-echo "$USERNAME:$PASSWORD" | chpasswd
+passwd "$USERNAME"
 
 # Perguntar se o usuário recém-criado é superusuário
-dialog --colors --backtitle "\Zb\Z0" --yesno "O usuário $USERNAME deve ser superusuário (sudo)?" 7 40
-if [ $? -eq 0 ]; then
+clear
+read -p "O usuário $USERNAME deve ser superusuário (sudo)? (s/n): " SUDO_USER
+if [[ $SUDO_USER =~ ^[Ss]$ ]]; then
     echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 fi
 
 # Seleção de drivers de vídeo
-VIDEO_DRIVERS=$(dialog --colors --backtitle "\Zb\Z0" --stdout --checklist "Selecione os drivers de vídeo:" 15 50 5 \
-    1 "Intel" off \
-    2 "AMD" off \
-    3 "NVIDIA (proprietário)" off \
-    4 "NVIDIA (open source)" off \
-    5 "VirtualBox" off)
+clear
+echo "Selecione os drivers de vídeo (separados por espaço):"
+echo "1) Intel"
+echo "2) AMD"
+echo "3) NVIDIA (proprietário)"
+echo "4) NVIDIA (open source)"
+echo "5) VirtualBox"
+read -p "Digite os números das opções desejadas: " VIDEO_DRIVERS
 
 # Instalação dos drivers de vídeo selecionados
 for DRIVER in $VIDEO_DRIVERS; do
@@ -217,9 +200,11 @@ for DRIVER in $VIDEO_DRIVERS; do
 done
 
 # Seleção de driver de áudio
-AUDIO_DRIVER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o driver de áudio:" 10 50 2 \
-    1 "Pulseaudio" \
-    2 "Pipewire")
+clear
+echo "Selecione o driver de áudio:"
+echo "1) Pulseaudio"
+echo "2) Pipewire"
+read -p "Digite o número da opção desejada: " AUDIO_DRIVER
 
 # Instalação do driver de áudio selecionado
 case $AUDIO_DRIVER in
@@ -228,12 +213,14 @@ case $AUDIO_DRIVER in
 esac
 
 # Seleção de ambiente de desktop
-DESKTOP_ENV=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o ambiente de desktop:" 15 50 5 \
-    1 "Gnome" \
-    2 "KDE" \
-    3 "XFCE" \
-    4 "Xorg (Minimal)" \
-    5 "Nenhum")
+clear
+echo "Selecione o ambiente de desktop:"
+echo "1) Gnome"
+echo "2) KDE"
+echo "3) XFCE"
+echo "4) Xorg (Minimal)"
+echo "5) Nenhum"
+read -p "Digite o número da opção desejada: " DESKTOP_ENV
 
 # Instalação do ambiente de desktop selecionado
 case $DESKTOP_ENV in
@@ -248,10 +235,12 @@ case $DESKTOP_ENV in
 esac
 
 # Seleção de AUR Helper
-AUR_HELPER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Deseja instalar um AUR Helper?" 10 50 3 \
-    1 "Yay" \
-    2 "Paru" \
-    3 "Nenhum")
+clear
+echo "Deseja instalar um AUR Helper?"
+echo "1) Yay"
+echo "2) Paru"
+echo "3) Nenhum"
+read -p "Digite o número da opção desejada: " AUR_HELPER
 
 # Instalação do AUR Helper selecionado
 case $AUR_HELPER in
@@ -278,8 +267,9 @@ if [ -n "$SWAP_PART" ]; then
 fi
 
 # Opção de reinicialização ou chroot
-dialog --colors --backtitle "\Zb\Z0" --yesno "Instalação concluída! Deseja reiniciar o sistema?" 7 50
-if [ $? -eq 0 ]; then
+clear
+read -p "Instalação concluída! Deseja reiniciar o sistema? (s/n): " REBOOT
+if [[ $REBOOT =~ ^[Ss]$ ]]; then
     reboot
 else
     arch-chroot /mnt

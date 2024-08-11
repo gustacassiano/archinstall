@@ -4,7 +4,7 @@
 desmontar_particoes() {
     local disco=$1
     for part in $(lsblk -ln -o NAME "$disco" | grep -v "^$(basename "$disco")$"); do
-        umount "/dev/$part" 2>/dev/null
+        umount -f "/dev/$part" 2>/dev/null
     done
 }
 

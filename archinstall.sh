@@ -11,8 +11,8 @@ criar_particoes() {
     sgdisk -Z "$disco"
 
     if [ "$tipo_sistema" = "EFI" ]; then
-        # Criar partição EFI (512MB)
-        sgdisk -n 1:0:+512M -t 1:ef00 "$disco"
+        # Criar partição EFI (1GB)
+        sgdisk -n 1:0:+1G -t 1:ef00 "$disco"
     else
         # Criar partição BIOS boot (1MB)
         sgdisk -n 1:0:+1M -t 1:ef02 "$disco"
@@ -83,10 +83,12 @@ sgdisk -p "$disco"
 # Formatação e montagem das partições
 if [ "$tipo_sistema" = "EFI" ]; then
     mkfs.fat -F32 "${disco}1"
+    mkfs.ext4 "${disco}3"
     mount "${disco}3" /mnt
     mkdir /mnt/boot
     mount "${disco}1" /mnt/boot
 else
+    mkfs.ext4 "${disco}2"
     mount "${disco}2" /mnt
 fi
 

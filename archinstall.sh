@@ -1,22 +1,14 @@
 #!/bin/bash
 
-# Verifica se o script está sendo executado como root
-if [ "$EUID" -ne 0 ]; then
-    echo "Por favor, execute como root"
-    exit 1
-fi
-
-# Função para exibir a tela de boas-vindas
-welcome_screen() {
-    printf '\033c'
-    echo "Bem-vindo ao instalador do Arch Linux por Gustavo Cameiras"
-    echo "
+# Funções e comandos iniciais
+printf '\033c'
+echo "
 
  ██████╗ █████╗ ███╗   ███╗███████╗██╗██████╗  █████╗ ███████╗                            
 ██╔════╝██╔══██╗████╗ ████║██╔════╝██║██╔══██╗██╔══██╗██╔════╝                            
 ██║     ███████║██╔████╔██║█████╗  ██║██████╔╝███████║███████╗                            
-██║     ███╔══██║██║╚██╔╝██║██╔══╝  ██║██╔══██╗██╔══██║╚════██║                            
-╚██████╗██��  ██║██║ ╚═╝ ██║███████╗██║██║  ██║██║  ██║███████║                            
+██║     ██╔══██║██║╚██╔╝██║██╔══╝  ██║██╔══██╗██╔══██║╚════██║                            
+╚██████╗██║  ██║██║ ╚═╝ ██║███████╗██║██║  ██║██║  ██║███████║                            
  ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝                            
                                                                                           
  █████╗ ██████╗  ██████╗██╗  ██╗    ██╗███╗   ██╗███████╗████████╗ █████╗ ██╗     ██╗     
@@ -27,199 +19,269 @@ welcome_screen() {
 ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
                                                                                           
 
+"
+echo "Bem-vindo ao instalador do Arch Linux por Gustavo Cameiras"
+sed -i "s/^#ParallelDownloads = 5$/ParallelDownloads = 15/" /etc/pacman.conf
+pacman --noconfirm -Sy archlinux-keyring
+loadkeys abnt-2
+timedatectl set-ntp true
+lsblk
+reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
+
+# Verificar e instalar dialog e git
+if ! command -v dialog &> /dev/null; then
+    pacman -Sy --noconfirm dialog
+fi
+
+if ! command -v git &> /dev/null; then
+    pacman -Sy --noconfirm git
+fi
+
+# Tela de boas-vindas
+dialog --colors --backtitle "\Zb\Z0" --msgbox "Bem-vindo ao script de instalação do Arch Linux!" 10 50
+
+# Função para obter a lista de discos disponíveis
+get_disks() {
+    lsblk -d -n -o NAME,SIZE | awk '{print "/dev/" $1 " (" $2 ")"}'
 }
 
-# Função para instalar pacotes iniciais
-install_initial_packages() {
-    pacman --noconfirm -Sy git dialog
+# Função para obter a quantidade de RAM em MB
+get_ram() {
+    free -m | awk '/^Mem:/{print $2}'
 }
 
-# Função para configurações iniciais
-initial_setup() {
-    pacman --noconfirm -Sy archlinux-keyring
-    loadkeys abnt-2
-    timedatectl set-ntp true
-    lsblk
-    reflector -a 48 -c $iso -f 5 -l 20 --sort rate --save /etc/pacman.d/mirrorlist
-    mkdir /mnt &>/dev/null
-}
+# Seleção do disco
+DISK=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o disco para instalação:" 0 0 0 $(get_disks))
+if [ -z "$DISK" ]; then
+    echo "Nenhum disco selecionado. Saindo..."
+    exit 1
+fi
 
-# Função para obter informações do usuário
-get_user_info() {
-    dialog --backtitle "Cameiras Arch Install" --title "Configuração do Usuário" --inputbox "Digite o nome de usuário:" 10 60 2>username.txt
-    dialog --backtitle "Cameiras Arch Install" --title "Configuração do Usuário" --passwordbox "Digite a senha:" 10 60 2>password.txt
-    dialog --backtitle "Cameiras Arch Install" --title "Configuração do Hostname" --inputbox "Digite o nome da máquina (hostname):" 10 60 2>hostname.txt
-}
+# Seleção do tipo de inicialização
+BOOT_TYPE=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o tipo de inicialização:" 10 50 2 \
+    1 "BIOS" \
+    2 "EFI")
 
-# Fun��ão para escolher opções de instalação
-choose_install_options() {
-    dialog --backtitle "Cameiras Arch Install" --title "Opções de Instalação" --menu "Escolha uma opção de encriptação LUKS:" 15 60 2 \
-    1 "Sim" \
-    2 "Não" 2>encryption.txt
+# Seleção do gerenciador de boot
+BOOTLOADER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o gerenciador de boot:" 10 50 2 \
+    1 "GRUB" \
+    2 "SystemD-boot")
 
-    dialog --backtitle "Cameiras Arch Install" --title "Drivers de Vídeo" --checklist "Escolha os drivers de vídeo:" 15 60 5 \
+# Particionamento do disco
+(
+echo "Criando tabela de partições..."
+parted -s "$DISK" mklabel gpt
+
+echo "Criando partição de boot..."
+if [ "$BOOT_TYPE" -eq 2 ]; then
+    parted -s "$DISK" mkpart primary fat32 1MiB 1GiB
+    parted -s "$DISK" set 1 esp on
+else
+    parted -s "$DISK" mkpart primary ext4 1MiB 1GiB
+    parted -s "$DISK" set 1 boot on
+fi
+
+echo "Criando partição root..."
+parted -s "$DISK" mkpart primary ext4 1GiB 100%
+) | dialog --colors --backtitle "\Zb\Z0" --progressbox "Particionando o disco..." 20 60
+
+# Perguntar se o usuário deseja criar uma partição swap
+dialog --colors --backtitle "\Zb\Z0" --yesno "Deseja criar uma partição swap?" 7 40
+if [ $? -eq 0 ]; then
+    RAM_SIZE=$(get_ram)
+    (
+    echo "Criando partição swap..."
+    parted -s "$DISK" mkpart primary linux-swap 1GiB $((1 + RAM_SIZE))MiB
+    ) | dialog --colors --backtitle "\Zb\Z0" --progressbox "Criando partição swap..." 20 60
+    SWAP_PART="${DISK}2"
+    ROOT_PART="${DISK}3"
+else
+    ROOT_PART="${DISK}2"
+fi
+
+# Formatação das partições
+if [ "$BOOT_TYPE" -eq 2 ]; then
+    mkfs.fat -F32 "${DISK}1"
+else
+    mkfs.ext4 "${DISK}1"
+fi
+mkfs.ext4 "$ROOT_PART"
+if [ -n "$SWAP_PART" ]; then
+    mkswap "$SWAP_PART"
+    swapon "$SWAP_PART"
+fi
+
+# Montagem das partições
+mount "$ROOT_PART" /mnt
+mkdir /mnt/boot
+mount "${DISK}1" /mnt/boot
+
+# Instalação do sistema base
+pacstrap /mnt base base-devel linux linux-firmware git wget networkmanager
+
+# Gerar fstab
+genfstab -U /mnt >> /mnt/etc/fstab
+
+# Chroot no novo sistema
+arch-chroot /mnt <<EOF
+# Configurações de fuso horário
+ln -sf /usr/share/zoneinfo/Region/City /etc/localtime
+hwclock --systohc
+
+# Configurações de localidade
+echo "pt_BR.UTF-8 UTF-8" >> /etc/locale.gen
+locale-gen
+echo "LANG=pt_BR.UTF-8" > /etc/locale.conf
+
+# Configurações de rede
+echo "archlinux" > /etc/hostname
+echo "127.0.0.1   localhost" >> /etc/hosts
+echo "::1         localhost" >> /etc/hosts
+echo "127.0.1.1   archlinux.localdomain archlinux" >> /etc/hosts
+
+# Habilitar NetworkManager
+systemctl enable NetworkManager
+
+# Configuração do root
+echo "Defina a senha do root"
+passwd
+
+# Instalação do gerenciador de boot
+if [ "$BOOTLOADER" -eq 1 ]; then
+    pacman -S grub --noconfirm
+    if [ "$BOOT_TYPE" -eq 2 ]; then
+        grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+    else
+        grub-install --target=i386-pc "$DISK"
+    fi
+    grub-mkconfig -o /boot/grub/grub.cfg
+else
+    pacman -S systemd-boot --noconfirm
+    bootctl install
+    cat <<EOL > /boot/loader/entries/arch.conf
+title   Arch Linux
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+options root=PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART") rw
+EOL
+    cat <<EOL > /boot/loader/loader.conf
+default arch
+timeout 4
+editor  no
+EOL
+fi
+
+# Criação de usuário
+USERNAME=$(dialog --colors --backtitle "\Zb\Z0" --stdout --inputbox "Digite o nome do usuário:" 10 50)
+if [ -z "$USERNAME" ]; then
+    echo "Nenhum nome de usuário fornecido. Saindo..."
+    exit 1
+fi
+
+while true; do
+    PASSWORD=$(dialog --colors --backtitle "\Zb\Z0" --stdout --passwordbox "Digite a senha do usuário:" 10 50)
+    PASSWORD_CONFIRM=$(dialog --colors --backtitle "\Zb\Z0" --stdout --passwordbox "Confirme a senha do usuário:" 10 50)
+    if [ "$PASSWORD" == "$PASSWORD_CONFIRM" ]; then
+        break
+    else
+        dialog --colors --backtitle "\Zb\Z0" --msgbox "As senhas não coincidem. Tente novamente." 10 50
+    fi
+done
+
+useradd -m -G wheel,audio,video -s /bin/bash "$USERNAME"
+echo "$USERNAME:$PASSWORD" | chpasswd
+
+# Perguntar se o usuário recém-criado é superusuário
+dialog --colors --backtitle "\Zb\Z0" --yesno "O usuário $USERNAME deve ser superusuário (sudo)?" 7 40
+if [ $? -eq 0 ]; then
+    echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
+fi
+
+# Seleção de drivers de vídeo
+VIDEO_DRIVERS=$(dialog --colors --backtitle "\Zb\Z0" --stdout --checklist "Selecione os drivers de vídeo:" 15 50 5 \
     1 "Intel" off \
     2 "AMD" off \
-    3 "NVIDIA Proprietário" off \
-    4 "NVIDIA Open Source" off \
-    5 "Máquinas Virtuais" off 2>video_drivers.txt
+    3 "NVIDIA (proprietário)" off \
+    4 "NVIDIA (open source)" off \
+    5 "VirtualBox" off)
 
-    dialog --backtitle "Cameiras Arch Install" --title "Drivers de Áudio" --menu "Escolha um driver de áudio:" 15 60 2 \
+# Instalação dos drivers de vídeo selecionados
+for DRIVER in $VIDEO_DRIVERS; do
+    case $DRIVER in
+        1) pacman -S --noconfirm xf86-video-intel ;;
+        2) pacman -S --noconfirm xf86-video-amdgpu ;;
+        3) pacman -S --noconfirm nvidia nvidia-utils ;;
+        4) pacman -S --noconfirm xf86-video-nouveau ;;
+        5) pacman -S --noconfirm virtualbox-guest-utils ;;
+    esac
+done
+
+# Seleção de driver de áudio
+AUDIO_DRIVER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o driver de áudio:" 10 50 2 \
     1 "Pulseaudio" \
-    2 "Pipewire" 2>audio_driver.txt
+    2 "Pipewire")
 
-    dialog --backtitle "Cameiras Arch Install" --title "Tipo de Boot" --menu "Escolha o tipo de Boot:" 15 60 2 \
-    1 "EFI" \
-    2 "BIOS" 2>boot_type.txt
+# Instalação do driver de áudio selecionado
+case $AUDIO_DRIVER in
+    1) pacman -S --noconfirm pulseaudio pulseaudio-alsa ;;
+    2) pacman -S --noconfirm pipewire pipewire-alsa pipewire-pulse ;;
+esac
 
-    dialog --backtitle "Cameiras Arch Install" --title "Gerenciador de Boot" --menu "Escolha um gerenciador de Boot:" 15 60 2 \
-    1 "GRUB" \
-    2 "SystemD" 2>boot_manager.txt
-
-    dialog --backtitle "Cameiras Arch Install" --title "Ambiente de Desktop" --menu "Escolha um ambiente de desktop:" 15 60 5 \
+# Seleção de ambiente de desktop
+DESKTOP_ENV=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Selecione o ambiente de desktop:" 15 50 5 \
     1 "Gnome" \
     2 "KDE" \
     3 "XFCE" \
-    4 "Xorg (minimal)" \
-    5 "Nenhum (servidores)" 2>desktop_environment.txt
+    4 "Xorg (Minimal)" \
+    5 "Nenhum")
 
-    dialog --backtitle "Cameiras Arch Install" --title "AUR Helper" --menu "Escolha um AUR helper:" 15 60 3 \
-    1 "YAY" \
+# Instalação do ambiente de desktop selecionado
+case $DESKTOP_ENV in
+    1) pacman -S --noconfirm gnome gnome-extra firefox ;;
+    2) pacman -S --noconfirm plasma kde-applications firefox ;;
+    3) pacman -S --noconfirm xfce4 xfce4-goodies firefox ;;
+    4) 
+        pacman -S --noconfirm xorg xorg-xinit ly gnome-polkit firefox
+        systemctl enable ly
+        systemctl enable polkit
+        ;;
+esac
+
+
+# Seleção de AUR Helper
+AUR_HELPER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Deseja instalar um AUR Helper?" 10 50 3 \
+    1 "Yay" \
     2 "Paru" \
-    3 "Nenhum" 2>aur_helper.txt
-}
+    3 "Nenhum")
 
-# Função para selecionar o disco e criar partições
-partition_disk() {
-    disks=$(lsblk -dn -o NAME,SIZE | awk '{print "/dev/" $1 " (" $2 ")"}')
-    dialog --backtitle "Cameiras Arch Install" --title "Seleção de Disco" --menu "Escolha o disco para particionar:" 15 60 4 ${disks} 2>disk.txt
-    disk=$(cat disk.txt)
+# Instalação do AUR Helper selecionado
+case $AUR_HELPER in
+    1)
+        pacman -S --noconfirm base-devel
+        sudo -u "$USERNAME" git clone https://aur.archlinux.org/yay.git /home/"$USERNAME"/yay
+        cd /home/"$USERNAME"/yay
+        sudo -u "$USERNAME" makepkg -si --noconfirm
+        ;;
+    2)
+        pacman -S --noconfirm base-devel
+        sudo -u "$USERNAME" git clone https://aur.archlinux.org/paru.git /home/"$USERNAME"/paru
+        cd /home/"$USERNAME"/paru
+        sudo -u "$USERNAME" makepkg -si --noconfirm
+        ;;
+esac
 
-    dialog --backtitle "Cameiras Arch Install" --title "Partição Swap" --yesno "Deseja criar uma partição de swap?" 10 60
-    swap_choice=$?
+EOF
 
-    # Tamanho da memória RAM em MiB
-    ram_size=$(grep MemTotal /proc/meminfo | awk '{print $2 / 1024}')
+# Saída do chroot e desmontagem
+umount -R /mnt
+if [ -n "$SWAP_PART" ]; então
+    swapoff "$SWAP_PART"
+fi
 
-    # Criar partições
-    parted -s $disk mklabel gpt
-    parted -s $disk mkpart primary ext4 1MiB 1GiB
-    parted -s $disk name 1 boot
-    parted -s $disk set 1 boot on
-
-    if [ $swap_choice -eq 0 ]; then
-        parted -s $disk mkpart primary linux-swap 1GiB $(echo "1GiB + ${ram_size}MiB" | bc)
-        parted -s $disk name 2 swap
-        swap_end=$(echo "1GiB + ${ram_size}MiB" | bc)
-    else
-        swap_end="1GiB"
-    fi
-
-    parted -s $disk mkpart primary ext4 ${swap_end} 100%
-    parted -s $disk name 3 root
-
-    # Formatar partições
-    mkfs.ext4 ${disk}1
-    if [ $swap_choice -eq 0 ]; then
-        mkswap ${disk}2
-        swapon ${disk}2
-    fi
-    mkfs.ext4 ${disk}3
-
-    # Montar partições
-    mount ${disk}3 /mnt
-    mkdir /mnt/boot
-    mount ${disk}1 /mnt/boot
-}
-
-# Função para instalar pacotes essenciais
-install_essential_packages() {
-    pacman --noconfirm -S git wget vim
-}
-
-# Função para configurar o sistema
-configure_system() {
-    # Adicionar usuário aos grupos necessários
-    useradd -m -G wheel,audio,video -s /bin/bash $(cat username.txt)
-    echo "$(cat username.txt):$(cat password.txt)" | chpasswd
-
-    # Configurar sudoers
-    echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
-
-    # Ativar serviços
-    systemctl enable ly
-    systemctl enable NetworkManager
-    systemctl enable polkit
-
-    # Instalar e configurar o polkit
-    case $(cat desktop_environment.txt) in
-        1) pacman --noconfirm -S gnome-polkit ;;
-        2) pacman --noconfirm -S kde-polkit ;;
-        3) pacman --noconfirm -S xfce-polkit ;;
-        4) pacman --noconfirm -S gnome-polkit ;;
-    esac
-
-    # Instalar e configurar o login manager
-    if [ $(cat desktop_environment.txt) -eq 4 ]; then
-        pacman --noconfirm -S ly
-    fi
-
-    # Instalar e configurar o network manager
-    pacman --noconfirm -S networkmanager
-    systemctl enable NetworkManager
-
-    # Instalar navegador Firefox se um desktop environment foi selecionado
-    if [ $(cat desktop_environment.txt) -ne 5 ]; then
-        pacman --noconfirm -S firefox
-    fi
-
-    # Instalar AUR helper se selecionado
-    case $(cat aur_helper.txt) in
-        1) git clone https://aur.archlinux.org/yay.git 
-             cd yay
-             makepkg -si
-             cd ;;
-        2) git clone https://aur.archlinux.org/paru.git
-             cd paru
-             makepkg -si
-             cd ;;
-            
-    esac
-}
-
-# Função para finalizar a instalação
-finalize_installation() {
-    dialog --backtitle "Cameiras Arch Install" --title "Instalação Completa" --yesno "A instalação do Arch Linux foi concluída com sucesso! Deseja reiniciar o sistema agora?" 10 60
-    if [ $? -eq 0 ]; then
-        reboot
-    else
-        dialog --backtitle "Cameiras Arch Install" --title "Continuar para chroot" --msgbox "Você pode continuar para o chroot para realizar configurações adicionais." 10 60
-        arch-chroot /mnt
-    fi
-}
-
-# Função para exibir mensagens de erro
-show_errors() {
-    if [ -s /tmp/install_errors.log ]; then
-        dialog --backtitle "Cameiras Arch Install" --title "Erros de Instalação" --textbox /tmp/install_errors.log 20 60
-    fi
-}
-
-# Função principal
-main() {
-    welcome_screen
-    install_initial_packages
-    initial_setup
-    get_user_info
-    choose_install_options
-    partition_disk
-    install_essential_packages
-    configure_system
-    show_errors
-    finalize_installation
-}
-
-main
-
-
-
+# Opção de reinicialização ou chroot
+dialog --colors --backtitle "\Zb\Z0" --yesno "Instalação concluída! Deseja reiniciar o sistema?" 7 50
+if [ $? -eq 0 ]; então
+    reboot
+else
+    arch-chroot /mnt
+fi

@@ -75,17 +75,12 @@ montar_swap() {
 verificar_montagem() {
     local disco=$1
     local tipo_sistema=$2
-    local criar_swap=$3
 
     while ! mountpoint -q /mnt || ! mountpoint -q /mnt/boot; do
         echo "Montando partições..."
         montar_particoes "$disco" "$tipo_sistema"
         sleep 2
     done
-
-    if [ "$criar_swap" = "sim" ]; then
-        montar_swap "$disco"
-    fi
 
     echo "Partições montadas corretamente."
 }
@@ -145,7 +140,12 @@ parted "$disco" print
 formatar_particoes "$disco" "$tipo_sistema" "$criar_swap"
 
 # Verificar e montar partições
-verificar_montagem "$disco" "$tipo_sistema" "$criar_swap"
+verificar_montagem "$disco" "$tipo_sistema"
+
+# Montar a partição de swap por último
+if [ "$criar_swap" = "sim" ]; então
+    montar_swap "$disco"
+fi
 
 # Instalação do sistema base
 pacstrap /mnt base base-devel linux linux-firmware

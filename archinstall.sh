@@ -29,8 +29,8 @@ criar_particoes() {
     fi
 }
 
-# Função para formatar e montar partições
-formatar_montar_particoes() {
+# Função para formatar partições
+formatar_particoes() {
     local disco=$1
     local tipo_sistema=$2
     local criar_swap=$3
@@ -38,34 +38,52 @@ formatar_montar_particoes() {
     if [ "$tipo_sistema" = "EFI" ]; then
         mkfs.fat -F32 "${disco}1"
         mkfs.ext4 "${disco}3"
+    else
+        mkfs.ext4 "${disco}2"
+    fi
+
+    if [ "$criar_swap" = "sim" ]; then
+        mkswap "${disco}2"
+    fi
+}
+
+# Função para montar partições
+montar_particoes() {
+    local disco=$1
+    local tipo_sistema=$2
+    local criar_swap=$3
+
+    if [ "$tipo_sistema" = "EFI" ]; then
         mount "${disco}3" /mnt
         mkdir -p /mnt/boot
         mount "${disco}1" /mnt/boot
     else
-        mkfs.ext4 "${disco}2"
         mount "${disco}2" /mnt
         mkdir -p /mnt/boot
         mount "${disco}1" /mnt/boot
     fi
 
     if [ "$criar_swap" = "sim" ]; then
-        mkswap "${disco}2"
         swapon "${disco}2"
     fi
 }
 
-# Função para verificar se as partições estão montadas
+# Função para verificar e montar partições
 verificar_montagem() {
+    local disco=$1
+    local tipo_sistema=$2
+    local criar_swap=$3
+
     if ! mountpoint -q /mnt; then
         echo "/mnt não está montado. Montando partições..."
-        formatar_montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
     else
         echo "/mnt está montado corretamente."
     fi
 
     if ! mountpoint -q /mnt/boot; then
         echo "/mnt/boot não está montado. Montando partições..."
-        formatar_montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
     else
         echo "/mnt/boot está montado corretamente."
     fi
@@ -115,9 +133,6 @@ echo "4) NVIDIA (open source)"
 echo "5) Drivers de vídeo para máquinas virtuais"
 read -p "Digite os números correspondentes à sua escolha: " video_choices
 
-# Criar o diretório para armazenar o segundo script
-mkdir -p /home/cameiras
-
 # Criar partições
 criar_particoes "$disco" "$criar_swap" "$tamanho_swap" "$tipo_sistema"
 
@@ -125,12 +140,11 @@ echo "Particionamento concluído!"
 echo "Partições criadas:"
 sgdisk -p "$disco"
 
-# Verificar e montar partições
-verificar_montagem
+# Formatar partições
+formatar_particoes "$disco" "$tipo_sistema" "$criar_swap"
 
-# Criar o segundo script para instalação
-cat <<EOF > /home/cameiras/part2.sh
-#!/bin/bash
+# Verificar e montar partições
+verificar_montagem "$disco" "$tipo_sistema" "$criar_swap"
 
 # Instalação do sistema base
 pacstrap /mnt base base-devel linux linux-firmware
@@ -261,10 +275,3 @@ echo "O hostname foi definido como $hostname."
 echo "O NetworkManager foi instalado e habilitado para iniciar com o sistema."
 echo "Os programas git, vim e wget foram instalados."
 echo "Reinicie o sistema e conecte-se à rede usando 'nmcli' ou 'nmtui'."
-EOF
-
-# Tornar o segundo script executável
-chmod +x /home/cameiras/part2.sh
-
-# Executar o segundo script
-/home/cameiras/part2.sh

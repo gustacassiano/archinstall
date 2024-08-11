@@ -115,6 +115,9 @@ echo "4) NVIDIA (open source)"
 echo "5) Drivers de vídeo para máquinas virtuais"
 read -p "Digite os números correspondentes à sua escolha: " video_choices
 
+# Criar o diretório para armazenar o segundo script
+mkdir -p /home/cameiras
+
 # Criar partições
 criar_particoes "$disco" "$criar_swap" "$tamanho_swap" "$tipo_sistema"
 

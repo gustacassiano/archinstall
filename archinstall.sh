@@ -139,8 +139,6 @@ echo "127.0.0.1   localhost" >> /etc/hosts
 echo "::1         localhost" >> /etc/hosts
 echo "127.0.1.1   archlinux.localdomain archlinux" >> /etc/hosts
 
-# Habilitar NetworkManager
-systemctl enable NetworkManager
 
 # Configuração do root
 echo "Defina a senha do root"
@@ -187,6 +185,8 @@ while true; do
         dialog --colors --backtitle "\Zb\Z0" --msgbox "As senhas não coincidem. Tente novamente." 10 50
     fi
 done
+
+
 
 useradd -m -G wheel,audio,video -s /bin/bash "$USERNAME"
 echo "$USERNAME:$PASSWORD" | chpasswd
@@ -247,6 +247,9 @@ case $DESKTOP_ENV in
         ;;
 esac
 
+
+# Habilitar NetworkManager
+systemctl enable NetworkManager
 
 # Seleção de AUR Helper
 AUR_HELPER=$(dialog --colors --backtitle "\Zb\Z0" --stdout --menu "Deseja instalar um AUR Helper?" 10 50 3 \

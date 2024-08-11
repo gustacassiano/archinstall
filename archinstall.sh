@@ -29,8 +29,8 @@ criar_particoes() {
     fi
 }
 
-# Função para montar partições
-montar_particoes() {
+# Função para formatar e montar partições
+formatar_montar_particoes() {
     local disco=$1
     local tipo_sistema=$2
     local criar_swap=$3
@@ -58,14 +58,14 @@ montar_particoes() {
 verificar_montagem() {
     if ! mountpoint -q /mnt; then
         echo "/mnt não está montado. Montando partições..."
-        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+        formatar_montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
     else
         echo "/mnt está montado corretamente."
     fi
 
     if ! mountpoint -q /mnt/boot; then
         echo "/mnt/boot não está montado. Montando partições..."
-        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+        formatar_montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
     else
         echo "/mnt/boot está montado corretamente."
     fi
@@ -125,6 +125,10 @@ sgdisk -p "$disco"
 # Verificar e montar partições
 verificar_montagem
 
+# Criar o segundo script para instalação
+cat <<EOF > /home/cameiras/part2.sh
+#!/bin/bash
+
 # Instalação do sistema base
 pacstrap /mnt base base-devel linux linux-firmware
 
@@ -132,7 +136,7 @@ pacstrap /mnt base base-devel linux linux-firmware
 genfstab -U /mnt >> /mnt/etc/fstab
 
 # Configuração do sistema, bootloader, locale, fuso horário, usuário e rede
-arch-chroot /mnt <<EOF
+arch-chroot /mnt <<EOC
 # Configuração do locale
 echo "pt_BR.UTF-8 UTF-8" > /etc/locale.gen
 locale-gen
@@ -203,7 +207,7 @@ esac
 
 # Instalação dos drivers de vídeo
 for choice in $video_choices; do
-    case $choice in
+    case \$choice in
         1)
             pacman -S --noconfirm xf86-video-intel
             ;;
@@ -243,9 +247,9 @@ else
     echo "title Arch Linux" > /boot/loader/entries/arch.conf
     echo "linux /vmlinuz-linux" >> /boot/loader/entries/arch.conf
     echo "initrd /initramfs-linux.img" >> /boot/loader/entries/arch.conf
-    echo "options root=PARTUUID=$(blkid -s PARTUUID -o value ${disco}3) rw" >> /boot/loader/entries/arch.conf
+    echo "options root=PARTUUID=\$(blkid -s PARTUUID -o value ${disco}3) rw" >> /boot/loader/entries/arch.conf
 fi
-EOF
+EOC
 
 echo "Instalação básica concluída!"
 echo "O sistema está configurado com locale pt_BR.UTF-8 e fuso horário America/Sao_Paulo."
@@ -254,3 +258,10 @@ echo "O hostname foi definido como $hostname."
 echo "O NetworkManager foi instalado e habilitado para iniciar com o sistema."
 echo "Os programas git, vim e wget foram instalados."
 echo "Reinicie o sistema e conecte-se à rede usando 'nmcli' ou 'nmtui'."
+EOF
+
+# Tornar o segundo script executável
+chmod +x /home/cameiras/part2.sh
+
+# Executar o segundo script
+/home/cameiras/part2.sh

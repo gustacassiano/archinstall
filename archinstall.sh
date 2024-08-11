@@ -74,19 +74,13 @@ verificar_montagem() {
     local tipo_sistema=$2
     local criar_swap=$3
 
-    if ! mountpoint -q /mnt; then
-        echo "/mnt não está montado. Montando partições..."
+    while ! mountpoint -q /mnt || ! mountpoint -q /mnt/boot; do
+        echo "Montando partições..."
         montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
-    else
-        echo "/mnt está montado corretamente."
-    fi
+        sleep 2
+    done
 
-    if ! mountpoint -q /mnt/boot; then
-        echo "/mnt/boot não está montado. Montando partições..."
-        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
-    else
-        echo "/mnt/boot está montado corretamente."
-    fi
+    echo "Partições montadas corretamente."
 }
 
 # Solicitar informações ao usuário

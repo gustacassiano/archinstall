@@ -10,7 +10,7 @@ criar_particoes() {
     # Limpar tabela de partições existente
     sgdisk -Z "$disco"
 
-    if [ "$tipo_sistema" = "EFI" ]; então
+    if [ "$tipo_sistema" = "EFI" ]; then
         # Criar partição EFI (512MB)
         sgdisk -n 1:0:+512M -t 1:ef00 "$disco"
     else
@@ -18,7 +18,7 @@ criar_particoes() {
         sgdisk -n 1:0:+1M -t 1:ef02 "$disco"
     fi
 
-    if [ "$tem_swap" = "sim" ]; então
+    if [ "$tem_swap" = "sim" ]; then
         # Criar partição de swap
         sgdisk -n 2:0:+"$tamanho_ram"G -t 2:8200 "$disco"
         # Criar partição root com o espaço restante
@@ -38,7 +38,7 @@ read -p "Seu sistema é BIOS ou EFI? " tipo_sistema
 read -p "Deseja usar GRUB ou systemd-boot como bootloader? " bootloader
 read -p "Deseja criar uma partição de swap? (sim/não): " criar_swap
 
-if [ "$criar_swap" = "sim" ]; então
+if [ "$criar_swap" = "sim" ]; then
     ram_total=$(free -g | awk '/^Mem:/{print $2}')
     echo "Tamanho da RAM detectado: ${ram_total}GB"
     read -p "Digite o tamanho da partição swap em GB (recomendado: ${ram_total}GB): " tamanho_swap
@@ -81,7 +81,7 @@ echo "Partições criadas:"
 sgdisk -p "$disco"
 
 # Formatação e montagem das partições
-if [ "$tipo_sistema" = "EFI" ]; então
+if [ "$tipo_sistema" = "EFI" ]; then
     mkfs.fat -F32 "${disco}1"
     mount "${disco}3" /mnt
     mkdir /mnt/boot
@@ -90,7 +90,7 @@ else
     mount "${disco}2" /mnt
 fi
 
-if [ "$criar_swap" = "sim" ]; então
+if [ "$criar_swap" = "sim" ]; then
     mkswap "${disco}2"
     swapon "${disco}2"
 fi
@@ -119,7 +119,7 @@ echo "$hostname" > /etc/hostname
 useradd -m $nome_usuario
 echo "$nome_usuario:$senha_usuario" | chpasswd
 usermod -aG wheel,audio,video $nome_usuario
-if [ "$super_usuario" = "sim" ]; então
+if [ "$super_usuario" = "sim" ]; then
     echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 fi
 
@@ -196,9 +196,9 @@ for choice in $video_choices; do
 done
 
 # Configuração do bootloader
-if [ "$bootloader" = "GRUB" ]; então
+if [ "$bootloader" = "GRUB" ]; then
     pacman -S --noconfirm grub
-    if [ "$tipo_sistema" = "EFI" ]; então
+    if [ "$tipo_sistema" = "EFI" ]; then
         pacman -S --noconfirm efibootmgr
         grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
     else

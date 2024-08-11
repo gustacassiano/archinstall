@@ -1,11 +1,22 @@
 #!/bin/bash
 
+# Função para desmontar todas as partições do disco
+desmontar_particoes() {
+    local disco=$1
+    for part in $(lsblk -ln -o NAME "$disco" | grep -v "^$(basename "$disco")$"); do
+        umount "/dev/$part" 2>/dev/null
+    done
+}
+
 # Função para criar partições
 criar_particoes() {
     local disco=$1
     local tem_swap=$2
     local tamanho_ram=$3
     local tipo_sistema=$4
+
+    # Desmontar todas as partições do disco
+    desmontar_particoes "$disco"
 
     # Limpar tabela de partições existente
     parted "$disco" mklabel gpt
@@ -225,7 +236,7 @@ esac
 
 # Instalação dos drivers de vídeo
 for choice in $video_choices; do
-    case $choice in
+    case \$choice in
         1)
             pacman -S --noconfirm xf86-video-intel
             ;;

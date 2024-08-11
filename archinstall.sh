@@ -29,6 +29,48 @@ criar_particoes() {
     fi
 }
 
+# Função para montar partições
+montar_particoes() {
+    local disco=$1
+    local tipo_sistema=$2
+    local criar_swap=$3
+
+    if [ "$tipo_sistema" = "EFI" ]; then
+        mkfs.fat -F32 "${disco}1"
+        mkfs.ext4 "${disco}3"
+        mount "${disco}3" /mnt
+        mkdir -p /mnt/boot
+        mount "${disco}1" /mnt/boot
+    else
+        mkfs.ext4 "${disco}2"
+        mount "${disco}2" /mnt
+        mkdir -p /mnt/boot
+        mount "${disco}1" /mnt/boot
+    fi
+
+    if [ "$criar_swap" = "sim" ]; then
+        mkswap "${disco}2"
+        swapon "${disco}2"
+    fi
+}
+
+# Função para verificar se as partições estão montadas
+verificar_montagem() {
+    if ! mountpoint -q /mnt; then
+        echo "/mnt não está montado. Montando partições..."
+        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+    else
+        echo "/mnt está montado corretamente."
+    fi
+
+    if ! mountpoint -q /mnt/boot; then
+        echo "/mnt/boot não está montado. Montando partições..."
+        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+    else
+        echo "/mnt/boot está montado corretamente."
+    fi
+}
+
 # Solicitar informações ao usuário
 echo "Bem-vindo ao script de instalação do Arch Linux!"
 echo "Por favor, forneça as seguintes informações:"
@@ -80,24 +122,8 @@ echo "Particionamento concluído!"
 echo "Partições criadas:"
 sgdisk -p "$disco"
 
-# Formatação e montagem das partições
-if [ "$tipo_sistema" = "EFI" ]; then
-    mkfs.fat -F32 "${disco}1"
-    mkfs.ext4 "${disco}3"
-    mount "${disco}3" /mnt
-    mkdir /mnt/boot
-    mount "${disco}1" /mnt/boot
-else
-    mkfs.ext4 "${disco}2"
-    mount "${disco}2" /mnt
-    mkdir /mnt/boot
-    mount "${disco}1" /mnt/boot
-fi
-
-if [ "$criar_swap" = "sim" ]; then
-    mkswap "${disco}2"
-    swapon "${disco}2"
-fi
+# Verificar e montar partições
+verificar_montagem
 
 # Instalação do sistema base
 pacstrap /mnt base base-devel linux linux-firmware

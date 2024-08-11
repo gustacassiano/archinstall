@@ -9,7 +9,7 @@ echo "
 ██║     ███████║██╔████╔██║█████╗  ██║██████╔╝███████║███████╗                            
 ██║     ██╔══██║██║╚██╔╝██║██╔══╝  ██║██╔══██╗██╔══██║╚════██║                            
 ╚██████╗██║  ██║██║ ╚═╝ ██║███████╗██║██║  ██║██║  ██║███████║                            
- ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═���╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝                            
+ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝                            
                                                                                           
  █████╗ ██████╗  ██████╗██╗  ██╗    ██╗███╗   ██╗███████╗████████╗ █████╗ ██╗     ██╗     
 ██╔══██╗██╔══██╗██╔════╝██║  ██║    ██║████╗  ██║██╔════╝╚══██╔══╝██╔══██╗██║     ██║     
@@ -68,6 +68,7 @@ echo "2) SystemD-boot"
 read -p "Digite o número da opção desejada: " BOOTLOADER
 
 # Particionamento do disco
+clear
 echo "Criando tabela de partições..."
 parted -s "$DISK" mklabel gpt
 
@@ -75,13 +76,12 @@ echo "Criando partição de boot..."
 if [ "$BOOT_TYPE" -eq 2 ]; then
     parted -s "$DISK" mkpart primary fat32 1MiB 1GiB
     parted -s "$DISK" set 1 esp on
+    BOOT_PART="${DISK}1"
 else
     parted -s "$DISK" mkpart primary ext4 1MiB 1GiB
     parted -s "$DISK" set 1 boot on
+    BOOT_PART="${DISK}1"
 fi
-
-echo "Criando partição root..."
-parted -s "$DISK" mkpart primary ext4 1GiB 100%
 
 # Perguntar se o usuário deseja criar uma partição swap
 clear
@@ -95,6 +95,10 @@ if [[ $CREATE_SWAP =~ ^[Ss]$ ]]; then
 else
     ROOT_PART="${DISK}2"
 fi
+
+# Criar partição de root
+echo "Criando partição de root..."
+parted -s "$DISK" mkpart primary ext4 $((1 + RAM_SIZE))MiB 100%
 
 # Formatação das partições
 if [ "$BOOT_TYPE" -eq 2 ]; then

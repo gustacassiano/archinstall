@@ -90,6 +90,8 @@ if [ "$tipo_sistema" = "EFI" ]; then
 else
     mkfs.ext4 "${disco}2"
     mount "${disco}2" /mnt
+    mkdir /mnt/boot
+    mount "${disco}1" /mnt/boot
 fi
 
 if [ "$criar_swap" = "sim" ]; then

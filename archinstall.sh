@@ -53,7 +53,6 @@ formatar_particoes() {
 montar_particoes() {
     local disco=$1
     local tipo_sistema=$2
-    local criar_swap=$3
 
     if [ "$tipo_sistema" = "EFI" ]; então
         mount "${disco}3" /mnt
@@ -64,10 +63,12 @@ montar_particoes() {
         mkdir -p /mnt/boot
         mount "${disco}1" /mnt/boot
     fi
+}
 
-    if [ "$criar_swap" = "sim" ]; então
-        swapon "${disco}2"
-    fi
+# Função para montar a partição de swap
+montar_swap() {
+    local disco=$1
+    swapon "${disco}2"
 }
 
 # Função para verificar e montar partições
@@ -78,9 +79,13 @@ verificar_montagem() {
 
     while ! mountpoint -q /mnt || ! mountpoint -q /mnt/boot; do
         echo "Montando partições..."
-        montar_particoes "$disco" "$tipo_sistema" "$criar_swap"
+        montar_particoes "$disco" "$tipo_sistema"
         sleep 2
     done
+
+    if [ "$criar_swap" = "sim" ]; then
+        montar_swap "$disco"
+    fi
 
     echo "Partições montadas corretamente."
 }

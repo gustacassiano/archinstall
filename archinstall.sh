@@ -8,24 +8,26 @@ criar_particoes() {
     local tipo_sistema=$4
 
     # Limpar tabela de partições existente
-    sgdisk -Z "$disco"
+    parted "$disco" mklabel gpt
 
     if [ "$tipo_sistema" = "EFI" ]; then
         # Criar partição EFI (1GB)
-        sgdisk -n 1:0:+1G -t 1:ef00 "$disco"
+        parted "$disco" mkpart primary fat32 1MiB 1GiB
+        parted "$disco" set 1 esp on
     else
         # Criar partição BIOS boot (1MB)
-        sgdisk -n 1:0:+1M -t 1:ef02 "$disco"
+        parted "$disco" mkpart primary 1MiB 2MiB
+        parted "$disco" set 1 bios_grub on
     fi
 
     if [ "$tem_swap" = "sim" ]; then
         # Criar partição de swap
-        sgdisk -n 2:0:+"$tamanho_ram"G -t 2:8200 "$disco"
+        parted "$disco" mkpart primary linux-swap 1GiB "$((1 + tamanho_ram))GiB"
         # Criar partição root com o espaço restante
-        sgdisk -n 3:0:0 -t 3:8300 "$disco"
+        parted "$disco" mkpart primary ext4 "$((1 + tamanho_ram))GiB" 100%
     else
         # Criar partição root com o espaço restante
-        sgdisk -n 2:0:0 -t 2:8300 "$disco"
+        parted "$disco" mkpart primary ext4 1GiB 100%
     fi
 }
 
@@ -35,14 +37,14 @@ formatar_particoes() {
     local tipo_sistema=$2
     local criar_swap=$3
 
-    if [ "$tipo_sistema" = "EFI" ]; then
-        mkfs.fat -F32 "${disco}1"
+    if [ "$tipo_sistema" = "EFI" ]; então
+        mkfs.vfat -F32 "${disco}1"
         mkfs.ext4 "${disco}3"
     else
         mkfs.ext4 "${disco}2"
     fi
 
-    if [ "$criar_swap" = "sim" ]; then
+    if [ "$criar_swap" = "sim" ]; então
         mkswap "${disco}2"
     fi
 }
@@ -53,7 +55,7 @@ montar_particoes() {
     local tipo_sistema=$2
     local criar_swap=$3
 
-    if [ "$tipo_sistema" = "EFI" ]; then
+    if [ "$tipo_sistema" = "EFI" ]; então
         mount "${disco}3" /mnt
         mkdir -p /mnt/boot
         mount "${disco}1" /mnt/boot
@@ -63,7 +65,7 @@ montar_particoes() {
         mount "${disco}1" /mnt/boot
     fi
 
-    if [ "$criar_swap" = "sim" ]; then
+    if [ "$criar_swap" = "sim" ]; então
         swapon "${disco}2"
     fi
 }
@@ -92,7 +94,7 @@ read -p "Seu sistema é BIOS ou EFI? " tipo_sistema
 read -p "Deseja usar GRUB ou systemd-boot como bootloader? " bootloader
 read -p "Deseja criar uma partição de swap? (sim/não): " criar_swap
 
-if [ "$criar_swap" = "sim" ]; then
+if [ "$criar_swap" = "sim" ]; então
     ram_total=$(free -g | awk '/^Mem:/{print $2}')
     echo "Tamanho da RAM detectado: ${ram_total}GB"
     read -p "Digite o tamanho da partição swap em GB (recomendado: ${ram_total}GB): " tamanho_swap
@@ -132,7 +134,7 @@ criar_particoes "$disco" "$criar_swap" "$tamanho_swap" "$tipo_sistema"
 
 echo "Particionamento concluído!"
 echo "Partições criadas:"
-sgdisk -p "$disco"
+parted "$disco" print
 
 # Formatar partições
 formatar_particoes "$disco" "$tipo_sistema" "$criar_swap"
@@ -164,7 +166,7 @@ echo "$hostname" > /etc/hostname
 useradd -m $nome_usuario
 echo "$nome_usuario:$senha_usuario" | chpasswd
 usermod -aG wheel,audio,video $nome_usuario
-if [ "$super_usuario" = "sim" ]; then
+if [ "$super_usuario" = "sim" ]; então
     echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 fi
 
@@ -241,9 +243,9 @@ for choice in $video_choices; do
 done
 
 # Configuração do bootloader
-if [ "$bootloader" = "GRUB" ]; then
+if [ "$bootloader" = "GRUB" ]; então
     pacman -S --noconfirm grub
-    if [ "$tipo_sistema" = "EFI" ]; then
+    if [ "$tipo_sistema" = "EFI" ]; então
         pacman -S --noconfirm efibootmgr
         grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
     else

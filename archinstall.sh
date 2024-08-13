@@ -52,7 +52,7 @@ formatar_particoes() {
         mkfs.vfat -F32 "${disco}1"
         mkfs.ext4 "${disco}3"
     else
-        mkfs.ext4 "${disco}2"
+        mkfs.ext4 "${disco}3"
     fi
 
     if [ "$criar_swap" = "sim" ]; then
@@ -70,7 +70,7 @@ montar_particoes() {
         mkdir -p /mnt/boot
         mount "${disco}1" /mnt/boot
     else
-        mount "${disco}2" /mnt
+        mount "${disco}3" /mnt
         mkdir -p /mnt/boot
         mount "${disco}1" /mnt/boot
     fi

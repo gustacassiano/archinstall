@@ -164,6 +164,12 @@ pacstrap /mnt base base-devel linux linux-firmware
 # Geração do fstab
 genfstab -U /mnt >> /mnt/etc/fstab
 
+# Verificar se o fstab foi gerado corretamente
+if [ ! -s /mnt/etc/fstab ]; then
+    echo "Erro: O arquivo /mnt/etc/fstab não foi gerado corretamente."
+    exit 1
+fi
+
 # Configuração do sistema, bootloader, locale, fuso horário, usuário e rede
 arch-chroot /mnt <<EOC
 # Configuração do locale
